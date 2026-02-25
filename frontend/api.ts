@@ -1,6 +1,7 @@
 import type { User } from './types';
 
-const API_BASE = (import.meta as any).env?.VITE_API_BASE_URL ?? 'http://localhost:4000/api';
+const API_BASE =
+  import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000/api';
 
 export class ApiError extends Error {
   status: number;
@@ -22,8 +23,12 @@ export function setToken(token: string | null) {
   else localStorage.removeItem('esrs.token');
 }
 
-export async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
+export async function apiFetch<T>(
+  path: string,
+  options: RequestInit = {}
+): Promise<T> {
   const token = getToken();
+
   const headers: Record<string, string> = {
     ...(options.headers as any)
   };
@@ -36,7 +41,9 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${API_BASE}${path}`, {
+  const url = `${API_BASE}${path}`;
+
+  const res = await fetch(url, {
     ...options,
     headers
   });
@@ -45,23 +52,31 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
 
   if (!res.ok) {
     let payload: any = null;
+
     if (contentType.includes('application/json')) {
       payload = await res.json().catch(() => null);
     } else {
       payload = await res.text().catch(() => null);
     }
-    throw new ApiError(payload?.error ?? res.statusText, res.status, payload?.details ?? payload);
+
+    throw new ApiError(
+      payload?.error ?? res.statusText,
+      res.status,
+      payload?.details ?? payload
+    );
   }
 
   if (contentType.includes('application/json')) {
     return res.json() as Promise<T>;
   }
 
-  // If the endpoint returns non-JSON and caller expects JSON, this will throw at runtime.
   return (await res.text()) as any;
 }
 
-export async function login(usernameOrEmail: string, password: string): Promise<{ token: string; user: User }> {
+export async function login(
+  usernameOrEmail: string,
+  password: string
+): Promise<{ token: string; user: User }> {
   return apiFetch('/auth/login', {
     method: 'POST',
     body: JSON.stringify({ usernameOrEmail, password })
@@ -70,25 +85,4 @@ export async function login(usernameOrEmail: string, password: string): Promise<
 
 export async function getMe(): Promise<User> {
   return apiFetch('/auth/me');
-}
-
-export async function downloadFile(path: string, filename: string) {
-  const token = getToken();
-  const res = await fetch(`${API_BASE}${path}`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new ApiError(text || res.statusText, res.status);
-  }
-
-  const blob = await res.blob();
-  const url = window.URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  window.URL.revokeObjectURL(url);
 }
