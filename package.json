@@ -1,0 +1,16 @@
+{
+  "name": "esrs-fullstack",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm -w backend run dev\" \"npm -w frontend run dev\"",
+    "build": "npm -w backend run build && npm -w frontend run build"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0",
+    "esbuild": "^0.27.3"
+  }
+}

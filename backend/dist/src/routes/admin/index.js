@@ -1,0 +1,23 @@
+import { Router } from 'express';
+import { requireAuth, requireRole } from '../../middleware/auth.js';
+import { UserRole } from '@prisma/client';
+import { usersRouter } from './users.js';
+import { permitTypesRouter } from './permitTypes.js';
+import { statusesRouter } from './statuses.js';
+import { unitsRouter } from './units.js';
+import { commoditiesRouter } from './commodities.js';
+import { reportPermissionsRouter } from './reportPermissions.js';
+import { regionConfigsRouter } from './regionConfigs.js';
+import { countriesRouter } from './countries.js';
+export const adminRouter = Router();
+adminRouter.use(requireAuth);
+adminRouter.use(requireRole([UserRole.ADMIN]));
+adminRouter.use('/users', usersRouter);
+adminRouter.use('/permit-types', permitTypesRouter);
+adminRouter.use('/statuses', statusesRouter);
+adminRouter.use('/units', unitsRouter);
+adminRouter.use('/commodities', commoditiesRouter);
+adminRouter.use('/report-permissions', reportPermissionsRouter);
+// Mount at `/regions` to match frontend Admin component expectations
+adminRouter.use('/regions', regionConfigsRouter);
+adminRouter.use('/countries', countriesRouter);
