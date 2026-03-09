@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import type { Commodity, ContractorStatus, PermitType, ReportPermission, Unit, User, UserRole, ReportType } from '../types';
-import { apiFetch } from '../api';
+import { apiFetch, downloadFile } from '../api';
 import { USER_ROLES } from '../types';
 import { Plus, Trash2, UserCog } from 'lucide-react';
 import { REPORT_TITLES } from '../constants';
@@ -127,13 +127,65 @@ const Admin: React.FC<AdminProps> = ({ user, permitTypes, statuses, commodities,
   const [newPermitType, setNewPermitType] = useState('');
   const [newStatus, setNewStatus] = useState('');
   const [newUnit, setNewUnit] = useState<{ name: string; symbol: string }>({ name: '', symbol: '' });
-  const [newCommodity, setNewCommodity] = useState<{ name: string; mineralType: 'METALLIC' | 'NON_METALLIC'; defaultUnitId: string; formTemplateCode: string }>(() => ({
+  const [newCommodity, setNewCommodity] = useState<{ name: string; mineralType: 'METALLIC' | 'NON_METALLIC'; defaultUnitId: string; formTemplateCode: string; category?: string }>(() => ({
     name: '',
     mineralType: 'METALLIC',
     defaultUnitId: units[0]?.id ?? '',
-    formTemplateCode: ''
+    formTemplateCode: '',
+    category: ''
   }));
   const [newCountry, setNewCountry] = useState('');
+  const [bulkFile, setBulkFile] = useState<File | null>(null);
+
+  const downloadBulkTemplate = async (format: 'csv' | 'xlsx', sample = false) => {
+    try {
+      await downloadFile(
+        `/admin/contractors/import-template?format=${format}&sample=${sample ? 'true' : 'false'}`,
+        `contractor_bulk_template${sample ? '_sample' : ''}.${format}`
+      );
+    } catch (e: any) {
+      alert(e?.message ?? `Failed to download ${format.toUpperCase()} template`);
+    }
+  };
+
+  const uploadBulkContractors = async () => {
+    if (!bulkFile) {
+      alert('Please choose a CSV or XLSX file first.');
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const form = new FormData();
+      form.append('file', bulkFile);
+
+      const result = await apiFetch<{ totalRows: number; createdCount: number; failedCount: number; failures: { rowNumber: number; message: string }[] }>(
+        '/admin/contractors/import',
+        {
+          method: 'POST',
+          body: form
+        }
+      );
+
+      await onChanged();
+      setBulkFile(null);
+
+      const firstErrors = result.failures.slice(0, 5).map((f) => `Row ${f.rowNumber}: ${f.message}`).join('\n');
+      alert(
+        [
+          `Import complete.`,
+          `Total rows: ${result.totalRows}`,
+          `Created: ${result.createdCount}`,
+          `Failed: ${result.failedCount}`,
+          firstErrors ? `\nFirst errors:\n${firstErrors}` : ''
+        ].join('\n')
+      );
+    } catch (e: any) {
+      alert(e?.message ?? 'Bulk upload failed');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const addPermitType = async () => {
     if (!newPermitType.trim()) return;
@@ -190,10 +242,11 @@ const Admin: React.FC<AdminProps> = ({ user, permitTypes, statuses, commodities,
           name: newCommodity.name.trim(),
           mineralType: newCommodity.mineralType,
           defaultUnitId: newCommodity.defaultUnitId || null,
-          formTemplateCode: newCommodity.formTemplateCode.trim() || null
+          formTemplateCode: newCommodity.formTemplateCode.trim() || null,
+          category: newCommodity.category?.trim() || null
         })
       });
-      setNewCommodity({ name: '', mineralType: 'METALLIC', defaultUnitId: units[0]?.id ?? '', formTemplateCode: '' });
+      setNewCommodity({ name: '', mineralType: 'METALLIC', defaultUnitId: units[0]?.id ?? '', formTemplateCode: '', category: '' });
       await onChanged();
       alert('Commodity added.');
     } catch (e: any) {
@@ -304,9 +357,10 @@ const Admin: React.FC<AdminProps> = ({ user, permitTypes, statuses, commodities,
   const editCommodity = async (id: string, currentName: string) => {
     const name = prompt('Edit commodity name', currentName);
     if (!name) return;
+    const category = prompt('Edit commodity category (optional)', '') ?? '';
     setBusy(true);
     try {
-      await apiFetch(`/admin/commodities/${id}`, { method: 'PUT', body: JSON.stringify({ name }) });
+      await apiFetch(`/admin/commodities/${id}`, { method: 'PUT', body: JSON.stringify({ name, category: category.trim() || null }) });
       await onChanged();
     } catch (e: any) {
       alert(e?.message ?? 'Failed');
@@ -580,6 +634,40 @@ const Admin: React.FC<AdminProps> = ({ user, permitTypes, statuses, commodities,
       {/* LISTS */}
       {section === 'LISTS' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-3 lg:col-span-2">
+            <div className="font-bold text-slate-800">Bulk Enroll Contractors</div>
+            <div className="text-sm text-slate-600">
+              Upload a CSV or XLSX file to create multiple contractors in one go. Use the template headers exactly.
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button className="px-4 py-2 bg-slate-700 text-white font-semibold rounded-xl" disabled={busy} onClick={() => downloadBulkTemplate('csv')}>
+                Download CSV Template
+              </button>
+              <button className="px-4 py-2 bg-slate-700 text-white font-semibold rounded-xl" disabled={busy} onClick={() => downloadBulkTemplate('xlsx')}>
+                Download Excel Template
+              </button>
+              <button className="px-4 py-2 bg-slate-600 text-white font-semibold rounded-xl" disabled={busy} onClick={() => downloadBulkTemplate('csv', true)}>
+                Download CSV Sample
+              </button>
+              <button className="px-4 py-2 bg-slate-600 text-white font-semibold rounded-xl" disabled={busy} onClick={() => downloadBulkTemplate('xlsx', true)}>
+                Download Excel Sample
+              </button>
+              <input
+                type="file"
+                accept=".csv,.xlsx"
+                className="p-2.5 border border-slate-200 rounded-lg"
+                onChange={(e) => setBulkFile(e.target.files?.[0] ?? null)}
+              />
+              <button className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-xl disabled:opacity-50" disabled={busy || !bulkFile} onClick={uploadBulkContractors}>
+                Upload & Enroll
+              </button>
+            </div>
+            <div className="text-xs text-slate-500">
+              Required headers: name, tin, operatorName, contactNo, email, regionCode, regionName, provinceCode, provinceName, municipalityCode,
+              municipalityName, areaHectare, status, commodities.
+            </div>
+          </div>
+
           <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-3">
             <div className="font-bold text-slate-800">Permit Types</div>
             <div className="flex gap-2">
@@ -667,6 +755,7 @@ const Admin: React.FC<AdminProps> = ({ user, permitTypes, statuses, commodities,
                 ))}
               </select>
               <input className="p-2.5 border border-slate-200 rounded-lg" placeholder="Form code (e.g. MGB29-01)" value={newCommodity.formTemplateCode} onChange={(e) => setNewCommodity({ ...newCommodity, formTemplateCode: e.target.value })} />
+              <input className="p-2.5 border border-slate-200 rounded-lg" placeholder="Category (e.g. Cement, Metallic)" value={newCommodity.category} onChange={(e) => setNewCommodity({ ...newCommodity, category: e.target.value })} />
             </div>
             <div className="mt-3">
               <button className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-xl" disabled={busy} onClick={addCommodity}>
@@ -676,7 +765,7 @@ const Admin: React.FC<AdminProps> = ({ user, permitTypes, statuses, commodities,
             <div className="text-sm text-slate-700">
               {commodities.map((c) => (
                 <div key={c.id} className="flex items-center gap-2 py-1">
-                  <span className="flex-1">{c.name} ({c.mineralType})</span>
+                  <span className="flex-1">{c.name} ({c.mineralType}) {c.category ? <span className="text-xs text-slate-500">· {c.category}</span> : null}</span>
                   <button className="text-sm text-blue-600" onClick={() => editCommodity(c.id, c.name)} disabled={busy}>
                     Edit
                   </button>

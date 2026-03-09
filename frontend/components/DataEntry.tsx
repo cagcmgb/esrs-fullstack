@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import type { Commodity, Contractor, Submission, User } from '../types';
-import { apiFetch } from '../api';
+import { apiFetch, downloadFile } from '../api';
 import SuccessToast from './SuccessToast';
 import { MONTHS } from '../constants';
-import { Paperclip, Save, Send, Trash2 } from 'lucide-react';
+import { Download, Paperclip, Save, Send, Trash2, X } from 'lucide-react';
+import Swal from 'sweetalert2';
 
 interface DataEntryProps {
   user: User;
@@ -55,6 +56,15 @@ const DataEntry: React.FC<DataEntryProps> = ({ user, contractors, commodities, s
   const [error, setError] = useState<string>('');
   const [busy, setBusy] = useState<boolean>(false);
   const [success, setSuccess] = useState<string>('');
+  const [recentViewSubmission, setRecentViewSubmission] = useState<Submission | null>(null);
+
+  const popup = Swal.mixin({
+    confirmButtonColor: '#6366F1',
+    cancelButtonColor: '#94A3B8',
+    confirmButtonText: 'OK',
+    showClass: { popup: 'swal2-show' },
+    hideClass: { popup: 'swal2-hide' }
+  });
 
   const selectedContractor = useMemo(() => contractors.find((c) => c.id === contractorId) ?? null, [contractorId, contractors]);
   const contractorCommodityOptions = useMemo(() => {
@@ -236,7 +246,15 @@ const DataEntry: React.FC<DataEntryProps> = ({ user, contractors, commodities, s
 
   const handleDeleteDraft = async () => {
     if (!currentSubmissionId) return;
-    if (!confirm('Delete this draft submission?')) return;
+    const result = await popup.fire({
+      title: 'Delete this draft submission?',
+      text: 'This will clear all encoded sections for this draft.',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Delete',
+      cancelButtonText: 'Cancel'
+    });
+    if (!result.isConfirmed) return;
     setBusy(true);
     try {
       // Soft-delete not implemented; easiest is to set blank and keep record.
@@ -247,24 +265,31 @@ const DataEntry: React.FC<DataEntryProps> = ({ user, contractors, commodities, s
       });
       await onChanged();
     } catch (err: any) {
-      alert(err?.message ?? 'Failed');
+      await popup.fire({
+        title: 'Operation failed',
+        text: err?.message ?? 'Failed',
+        icon: 'error',
+        confirmButtonText: 'OK'
+      });
     } finally {
       setBusy(false);
     }
   };
 
   const handleUpload = async (file: File) => {
-    if (!currentSubmissionId) {
-      alert('Please save the draft first, then upload the attachment.');
-      return;
-    }
-
     const fd = new FormData();
     fd.append('file', file);
 
+    setError('');
     setBusy(true);
     try {
-      await apiFetch(`/submissions/${currentSubmissionId}/attachments`, {
+      let targetSubmissionId = currentSubmissionId;
+      if (!targetSubmissionId) {
+        const created = await upsertSubmission();
+        targetSubmissionId = created.id;
+      }
+
+      await apiFetch(`/submissions/${targetSubmissionId}/attachments`, {
         method: 'POST',
         body: fd
       });
@@ -279,7 +304,14 @@ const DataEntry: React.FC<DataEntryProps> = ({ user, contractors, commodities, s
 
   const handleRemoveAttachment = async (attachmentId: string) => {
     if (!currentSubmissionId) return;
-    if (!confirm('Remove this attachment?')) return;
+    const result = await popup.fire({
+      title: 'Remove this attachment?',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Remove',
+      cancelButtonText: 'Cancel'
+    });
+    if (!result.isConfirmed) return;
     setError('');
     setBusy(true);
     try {
@@ -309,7 +341,15 @@ const DataEntry: React.FC<DataEntryProps> = ({ user, contractors, commodities, s
   };
 
   const deleteSubmission = async (s: Submission) => {
-    if (!confirm('Delete this submission?')) return;
+    const result = await popup.fire({
+      title: 'Delete this submission?',
+      text: 'This action cannot be undone.',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Delete',
+      cancelButtonText: 'Cancel'
+    });
+    if (!result.isConfirmed) return;
     setError('');
     setBusy(true);
     try {
@@ -743,7 +783,7 @@ const DataEntry: React.FC<DataEntryProps> = ({ user, contractors, commodities, s
                   disabled={readOnly}
                 />
               </label>
-              <span className="text-xs text-slate-500">(Save draft first before uploading)</span>
+              <span className="text-xs text-slate-500">(Draft auto-saves on first upload)</span>
             </div>
 
             {existingSubmission?.attachments?.length ? (
@@ -832,7 +872,7 @@ const DataEntry: React.FC<DataEntryProps> = ({ user, contractors, commodities, s
                       <div className="flex gap-2">
                         <button
                           className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold bg-slate-100 text-slate-800 rounded-lg hover:bg-slate-200"
-                          onClick={() => jumpToSubmission(s)}
+                          onClick={() => setRecentViewSubmission(s)}
                         >
                           View
                         </button>
@@ -868,6 +908,143 @@ const DataEntry: React.FC<DataEntryProps> = ({ user, contractors, commodities, s
           </table>
         </div>
       </div>
+
+      {recentViewSubmission && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setRecentViewSubmission(null)} />
+          <div className="relative bg-white rounded-2xl shadow-lg max-w-3xl w-full p-6 z-50 max-h-[85vh] overflow-y-auto">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="font-bold text-lg text-slate-800">Submission Details</div>
+                <div className="text-xs text-slate-500">{recentViewSubmission.contractor.name} — {recentViewSubmission.commodity.name}</div>
+              </div>
+              <div className="flex items-start gap-4">
+                <div className="text-right text-xs text-slate-500">{recentViewSubmission.year}-{String(recentViewSubmission.month ?? '').padStart(2, '0')}</div>
+                <button className="p-1 rounded hover:bg-slate-100" onClick={() => setRecentViewSubmission(null)} aria-label="Close">
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <div className="font-semibold text-slate-700">Contractor</div>
+                <div className="text-sm">{recentViewSubmission.contractor.contractorCode ?? '—'} {recentViewSubmission.contractor.name}</div>
+                <div className="text-xs text-slate-500">{recentViewSubmission.contractor.municipalityName}, {recentViewSubmission.contractor.provinceName}</div>
+              </div>
+              <div>
+                <div className="font-semibold text-slate-700">Status</div>
+                <div className="text-sm">{recentViewSubmission.status}</div>
+                <div className="text-xs text-slate-500">Submitted: {recentViewSubmission.submittedAt ? new Date(recentViewSubmission.submittedAt).toLocaleString() : '—'}</div>
+              </div>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              <div>
+                <div className="font-semibold text-slate-700">Attachments</div>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {recentViewSubmission.attachments.length === 0 && <div className="text-xs text-slate-500">No attachments</div>}
+                  {recentViewSubmission.attachments.map((a) => (
+                    <button
+                      key={a.id}
+                      className="inline-flex items-center gap-2 px-3 py-1.5 text-xs bg-slate-100 rounded-md"
+                      onClick={() => downloadFile(`/submissions/${recentViewSubmission.id}/attachments/${a.id}/download`, a.originalName)}
+                    >
+                      <Download size={14} /> {a.originalName}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <div className="font-semibold text-slate-700">Administrative</div>
+                <div className="mt-2 p-3 bg-slate-50 rounded-md text-sm text-slate-700">{(recentViewSubmission.administrative && (recentViewSubmission.administrative.notes || JSON.stringify(recentViewSubmission.administrative))) ?? <span className="text-xs text-slate-500">No notes</span>}</div>
+              </div>
+
+              <div>
+                <div className="font-semibold text-slate-700">Production</div>
+                <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="p-3 bg-slate-50 rounded">
+                    <div className="text-xs text-slate-500">Quantity</div>
+                    <div className="font-semibold">{recentViewSubmission.production?.quantity ?? '—'}</div>
+                  </div>
+                  <div className="p-3 bg-slate-50 rounded">
+                    <div className="text-xs text-slate-500">Unit</div>
+                    <div className="font-semibold">{recentViewSubmission.production?.unit ?? '—'}</div>
+                  </div>
+                  <div className="p-3 bg-slate-50 rounded">
+                    <div className="text-xs text-slate-500">Value (PHP)</div>
+                    <div className="font-semibold">{recentViewSubmission.production?.value ?? '—'}</div>
+                  </div>
+                  <div className="p-3 bg-slate-50 rounded md:col-span-2">
+                    <div className="text-xs text-slate-500">Remarks</div>
+                    <div className="text-sm mt-1">{recentViewSubmission.production?.remarks ?? <span className="text-xs text-slate-500">—</span>}</div>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <div className="font-semibold text-slate-700">Sales</div>
+                <div className="mt-2 space-y-2">
+                  {(recentViewSubmission.sales?.records ?? []).length === 0 ? (
+                    <div className="text-xs text-slate-500">No sales records</div>
+                  ) : (
+                    (recentViewSubmission.sales?.records ?? []).map((r, idx) => (
+                      <div key={idx} className="p-3 bg-slate-50 rounded grid grid-cols-1 md:grid-cols-4 gap-2">
+                        <div>
+                          <div className="text-xs text-slate-500">Buyer</div>
+                          <div className="font-semibold">{r.buyerName || '—'}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-slate-500">Country</div>
+                          <div className="font-semibold">{r.destinationCountry || '—'}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-slate-500">Quantity</div>
+                          <div className="font-semibold">{r.quantity ?? '—'} {r.unit ?? ''}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-slate-500">Value (PHP)</div>
+                          <div className="font-semibold">{r.valuePhp ?? r.fobValuePhp ?? '—'}</div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <div className="font-semibold text-slate-700">Employment</div>
+                <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="p-3 bg-slate-50 rounded">
+                    <div className="text-xs text-slate-500">Head Office (Male)</div>
+                    <div className="font-semibold">{recentViewSubmission.employment?.headOfficeMale ?? 0}</div>
+                  </div>
+                  <div className="p-3 bg-slate-50 rounded">
+                    <div className="text-xs text-slate-500">Head Office (Female)</div>
+                    <div className="font-semibold">{recentViewSubmission.employment?.headOfficeFemale ?? 0}</div>
+                  </div>
+                  <div className="p-3 bg-slate-50 rounded">
+                    <div className="text-xs text-slate-500">Mine Site (Male)</div>
+                    <div className="font-semibold">{recentViewSubmission.employment?.mineSiteMale ?? 0}</div>
+                  </div>
+                  <div className="p-3 bg-slate-50 rounded">
+                    <div className="text-xs text-slate-500">Mine Site (Female)</div>
+                    <div className="font-semibold">{recentViewSubmission.employment?.mineSiteFemale ?? 0}</div>
+                  </div>
+                </div>
+                <div className="mt-2 text-sm text-slate-700 font-semibold">Total: {(recentViewSubmission.employment?.headOfficeMale ?? 0) + (recentViewSubmission.employment?.headOfficeFemale ?? 0) + (recentViewSubmission.employment?.mineSiteMale ?? 0) + (recentViewSubmission.employment?.mineSiteFemale ?? 0)}</div>
+              </div>
+            </div>
+
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <button className="px-4 py-2 text-sm bg-white border rounded-md" onClick={() => setRecentViewSubmission(null)}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       </div>
       <SuccessToast open={!!success} message={success} onClose={() => setSuccess('')} />
     </>

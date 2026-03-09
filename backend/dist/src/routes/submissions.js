@@ -311,3 +311,31 @@ submissionsRouter.get('/:id/attachments/:attachmentId/download', asyncHandler(as
     }
     res.download(attachment.filePath, attachment.originalName);
 }));
+submissionsRouter.delete('/:id/attachments/:attachmentId', asyncHandler(async (req, res) => {
+    if (!req.user)
+        throw unauthorized();
+    const { id, attachmentId } = req.params;
+    const attachment = await prisma.attachment.findFirst({
+        where: { id: attachmentId, submissionId: id },
+        include: { submission: { include: { contractor: true } } }
+    });
+    if (!attachment)
+        throw notFound('Attachment not found');
+    if (req.user.role === UserRole.REGIONAL_ECONOMIST && req.user.regionCode && attachment.submission.contractor.regionCode !== req.user.regionCode) {
+        throw forbidden('You can only delete attachments for your region');
+    }
+    // Only Admin / Central Office / Regional Economist (region-matched) allowed
+    if (!(req.user.role === UserRole.ADMIN || req.user.role === UserRole.CENTRAL_OFFICE || req.user.role === UserRole.REGIONAL_ECONOMIST)) {
+        throw forbidden();
+    }
+    try {
+        if (attachment.filePath && fs.existsSync(attachment.filePath)) {
+            fs.unlinkSync(attachment.filePath);
+        }
+    }
+    catch (e) {
+        // ignore file deletion errors
+    }
+    await prisma.attachment.delete({ where: { id: attachmentId } });
+    res.json({ success: true });
+}));

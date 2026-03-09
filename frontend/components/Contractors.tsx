@@ -20,6 +20,8 @@ const emptyPermit = (permitTypeId?: string): Permit => ({
   dateExpiration: null
 });
 
+const toUpper = (value: string) => value.toUpperCase();
+
 const Contractors: React.FC<ContractorsProps> = ({ user, contractors, permitTypes, statuses, commodities, onChanged }) => {
   const [search, setSearch] = useState('');
   const [modal, setModal] = useState<null | { mode: 'create' | 'edit' | 'view'; contractor?: Contractor }>(null);
@@ -54,6 +56,9 @@ const Contractors: React.FC<ContractorsProps> = ({ user, contractors, permitType
   });
   const [histories, setHistories] = useState<any[]>([]);
   const [expandedHistory, setExpandedHistory] = useState<string | null>(null);
+  const [files, setFiles] = useState<{
+    requiredDocuments: File[];
+  }>({ requiredDocuments: [] });
 
   const canCreate = user.role === 'ADMIN' || user.role === 'REGIONAL_ECONOMIST';
   const canVerify = user.role === 'ADMIN' || user.role === 'CENTRAL_OFFICE';
@@ -121,6 +126,7 @@ const Contractors: React.FC<ContractorsProps> = ({ user, contractors, permitType
     });
     setProvinces([]);
     setCities([]);
+    setFiles({ requiredDocuments: [] });
   };
 
   const openCreate = () => {
@@ -216,12 +222,19 @@ const Contractors: React.FC<ContractorsProps> = ({ user, contractors, permitType
     setError('');
     setSaving(true);
     try {
+      // Validate corporate TIN (12 digits)
+      const tinDigits = (form.tin || '').replace(/\D/g, '');
+      if (tinDigits.length !== 12) {
+        setError('TIN must be a 12-digit corporate TIN');
+        setSaving(false);
+        return;
+      }
       const payload = {
-        name: form.name,
-        tin: form.tin,
-        operatorName: form.operatorName,
-        contactNo: form.contactNo,
-        email: form.email,
+        name: toUpper(form.name),
+        tin: toUpper(form.tin),
+        operatorName: toUpper(form.operatorName),
+        contactNo: toUpper(form.contactNo),
+        email: toUpper(form.email),
 
         regionCode: form.regionCode,
         regionName: form.regionName,
@@ -238,16 +251,27 @@ const Contractors: React.FC<ContractorsProps> = ({ user, contractors, permitType
           .filter((p) => p.permitTypeId && p.permitNumber)
           .map((p) => ({
             permitTypeId: p.permitTypeId,
-            permitNumber: p.permitNumber,
+            permitNumber: toUpper(p.permitNumber),
             dateApproved: p.dateApproved || null,
             dateExpiration: p.dateExpiration || null
           }))
       };
 
-      await apiFetch('/contractors', {
+      const created = await apiFetch('/contractors', {
         method: 'POST',
         body: JSON.stringify(payload)
       });
+
+      // upload any selected files
+      const formData = new FormData();
+      files.requiredDocuments.forEach((file) => formData.append('requiredDocuments', file));
+      if (Array.from(formData.keys()).length > 0) {
+        try {
+          await apiFetch(`/contractors/${(created as any).id}/documents`, { method: 'POST', body: formData });
+        } catch (e) {
+          // ignore upload errors here, but could surface to user
+        }
+      }
 
       setSuccess('Contractor enrolled successfully.');
       setModal(null);
@@ -265,12 +289,19 @@ const Contractors: React.FC<ContractorsProps> = ({ user, contractors, permitType
     setError('');
     setSaving(true);
     try {
+      // Validate corporate TIN (12 digits) when present
+      const tinDigits = (form.tin || '').replace(/\D/g, '');
+      if (tinDigits.length !== 12) {
+        setError('TIN must be a 12-digit corporate TIN');
+        setSaving(false);
+        return;
+      }
       const payload = {
-        name: form.name,
-        tin: form.tin,
-        operatorName: form.operatorName,
-        contactNo: form.contactNo,
-        email: form.email,
+        name: toUpper(form.name),
+        tin: toUpper(form.tin),
+        operatorName: toUpper(form.operatorName),
+        contactNo: toUpper(form.contactNo),
+        email: toUpper(form.email),
 
         regionCode: form.regionCode,
         regionName: form.regionName,
@@ -287,7 +318,7 @@ const Contractors: React.FC<ContractorsProps> = ({ user, contractors, permitType
           .filter((p) => p.permitTypeId && p.permitNumber)
           .map((p) => ({
             permitTypeId: p.permitTypeId,
-            permitNumber: p.permitNumber,
+            permitNumber: toUpper(p.permitNumber),
             dateApproved: p.dateApproved || null,
             dateExpiration: p.dateExpiration || null
           }))
@@ -297,6 +328,17 @@ const Contractors: React.FC<ContractorsProps> = ({ user, contractors, permitType
         method: 'PUT',
         body: JSON.stringify(payload)
       });
+
+      // upload files if any selected
+      const formData = new FormData();
+      files.requiredDocuments.forEach((file) => formData.append('requiredDocuments', file));
+      if (Array.from(formData.keys()).length > 0) {
+        try {
+          await apiFetch(`/contractors/${modal.contractor.id}/documents`, { method: 'POST', body: formData });
+        } catch (e) {
+          // ignore
+        }
+      }
 
       setSuccess('Contractor updated successfully.');
       setModal(null);
@@ -512,7 +554,7 @@ const Contractors: React.FC<ContractorsProps> = ({ user, contractors, permitType
                     disabled={modal.mode === 'view'}
                     className="w-full p-2.5 border border-slate-200 rounded-lg disabled:bg-slate-50"
                     value={form.name}
-                    onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    onChange={(e) => setForm({ ...form, name: toUpper(e.target.value) })}
                   />
                 </div>
                 <div>
@@ -520,8 +562,10 @@ const Contractors: React.FC<ContractorsProps> = ({ user, contractors, permitType
                   <input
                     disabled={modal.mode === 'view'}
                     className="w-full p-2.5 border border-slate-200 rounded-lg disabled:bg-slate-50"
+                    placeholder="12-digit corporate TIN"
+                    pattern="[0-9\- ]{12,}"
                     value={form.tin}
-                    onChange={(e) => setForm({ ...form, tin: e.target.value })}
+                    onChange={(e) => setForm({ ...form, tin: toUpper(e.target.value) })}
                   />
                 </div>
 
@@ -531,7 +575,7 @@ const Contractors: React.FC<ContractorsProps> = ({ user, contractors, permitType
                     disabled={modal.mode === 'view'}
                     className="w-full p-2.5 border border-slate-200 rounded-lg disabled:bg-slate-50"
                     value={form.operatorName}
-                    onChange={(e) => setForm({ ...form, operatorName: e.target.value })}
+                    onChange={(e) => setForm({ ...form, operatorName: toUpper(e.target.value) })}
                   />
                 </div>
                 <div>
@@ -540,13 +584,13 @@ const Contractors: React.FC<ContractorsProps> = ({ user, contractors, permitType
                     disabled={modal.mode === 'view'}
                     className="w-full p-2.5 border border-slate-200 rounded-lg disabled:bg-slate-50"
                     value={form.contactNo}
-                    onChange={(e) => setForm({ ...form, contactNo: e.target.value })}
+                    onChange={(e) => setForm({ ...form, contactNo: toUpper(e.target.value) })}
                   />
                 </div>
 
                 <div>
                   <label className="block text-xs font-bold text-slate-600 mb-1">Email</label>
-                  <input type="email" className="w-full p-2.5 border border-slate-200 rounded-lg" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+                  <input type="email" className="w-full p-2.5 border border-slate-200 rounded-lg" value={form.email} onChange={(e) => setForm({ ...form, email: toUpper(e.target.value) })} />
                 </div>
 
                 <div>
@@ -745,7 +789,7 @@ const Contractors: React.FC<ContractorsProps> = ({ user, contractors, permitType
                         value={p.permitNumber}
                         onChange={(e) => {
                           const permits = [...form.permits];
-                          permits[idx] = { ...permits[idx], permitNumber: e.target.value };
+                          permits[idx] = { ...permits[idx], permitNumber: toUpper(e.target.value) };
                           setForm({ ...form, permits });
                         }}
                       />
@@ -793,6 +837,19 @@ const Contractors: React.FC<ContractorsProps> = ({ user, contractors, permitType
                   </div>
                 ))}
               </div>
+
+                {/* Required Documents */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-2">Required Documents</label>
+                  <input
+                    disabled={modal.mode === 'view'}
+                    type="file"
+                    multiple
+                    accept=".pdf,image/*,.doc,.docx"
+                    onChange={(e) => setFiles({ ...files, requiredDocuments: Array.from(e.target.files ?? []) })}
+                  />
+                  <div className="text-xs text-slate-500 mt-2">Accepted formats: PDF, JPG/PNG, DOC/DOCX</div>
+                </div>
             </div>
 
             <div className="p-5 border-t border-slate-200 flex items-center justify-end gap-3">

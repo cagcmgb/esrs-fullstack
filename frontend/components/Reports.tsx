@@ -3,6 +3,7 @@ import type { Commodity, Contractor, MineralType, ReportPermission, ReportType, 
 import { apiFetch, downloadFile } from '../api';
 import { MONTHS, REPORT_TITLES } from '../constants';
 import { CheckCircle2, Download, Filter, XCircle, X } from 'lucide-react';
+import Swal from 'sweetalert2';
 
 interface ReportsProps {
   user: User;
@@ -35,6 +36,13 @@ const Reports: React.FC<ReportsProps> = ({ user, reportPermissions, contractors,
   const [asOf, setAsOf] = useState<string>(now.toISOString().slice(0, 10));
 
   const canReview = user.role === 'ADMIN' || user.role === 'CENTRAL_OFFICE';
+  const popup = Swal.mixin({
+    confirmButtonColor: '#6366F1',
+    cancelButtonColor: '#94A3B8',
+    confirmButtonText: 'OK',
+    showClass: { popup: 'swal2-show' },
+    hideClass: { popup: 'swal2-hide' }
+  });
 
   const regionOptions = useMemo(() => {
     const map = new Map<string, string>();
@@ -101,7 +109,11 @@ const Reports: React.FC<ReportsProps> = ({ user, reportPermissions, contractors,
 
   const downloadReport = async (type: ReportType, endpoint: string) => {
     if (!canViewReport(type)) {
-      alert('You do not have permission to generate this report.');
+      await popup.fire({
+        title: 'Access denied',
+        text: 'You do not have permission to generate this report.',
+        icon: 'warning'
+      });
       return;
     }
 
@@ -120,7 +132,26 @@ const Reports: React.FC<ReportsProps> = ({ user, reportPermissions, contractors,
   };
 
   const rejectSubmission = async (id: string) => {
-    const reason = prompt('Rejection reason (optional):') ?? '';
+    const result = await popup.fire({
+      title: 'Reject submission',
+      text: 'Please provide a rejection reason.',
+      input: 'textarea',
+      inputPlaceholder: 'Type reason here...',
+      showCancelButton: true,
+      confirmButtonText: 'Reject',
+      cancelButtonText: 'Cancel',
+      icon: 'warning'
+    });
+    if (!result.isConfirmed) return;
+    const reason = String(result.value ?? '').trim();
+    if (!reason) {
+      await popup.fire({
+        title: 'Reason required',
+        text: 'Please enter a rejection reason.',
+        icon: 'warning'
+      });
+      return;
+    }
     await apiFetch(`/submissions/${id}/reject`, { method: 'POST', body: JSON.stringify({ reason }) });
     await onChanged();
   };
@@ -144,7 +175,15 @@ const Reports: React.FC<ReportsProps> = ({ user, reportPermissions, contractors,
   };
 
   const handleDeleteFromRow = async (s: any) => {
-    if (!confirm('Delete this submission?')) return;
+    const result = await popup.fire({
+      title: 'Delete this submission?',
+      text: 'This action cannot be undone.',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Delete',
+      cancelButtonText: 'Cancel'
+    });
+    if (!result.isConfirmed) return;
     await apiFetch(`/submissions/${s.id}`, { method: 'DELETE' });
     await onChanged();
     if (selectedSubmission?.id === s.id) closeSubmission();
@@ -602,7 +641,15 @@ const Reports: React.FC<ReportsProps> = ({ user, reportPermissions, contractors,
                     <button
                       className="px-4 py-2 text-sm bg-red-600 text-white rounded-md"
                       onClick={async () => {
-                        if (!confirm('Delete this submission?')) return;
+                        const result = await popup.fire({
+                          title: 'Delete this submission?',
+                          text: 'This action cannot be undone.',
+                          icon: 'warning',
+                          showCancelButton: true,
+                          confirmButtonText: 'Delete',
+                          cancelButtonText: 'Cancel'
+                        });
+                        if (!result.isConfirmed) return;
                         await apiFetch(`/submissions/${selectedSubmission.id}`, { method: 'DELETE' });
                         await onChanged();
                         closeSubmission();
@@ -618,7 +665,14 @@ const Reports: React.FC<ReportsProps> = ({ user, reportPermissions, contractors,
                     <button
                       className="px-4 py-2 text-sm bg-red-600 text-white rounded-md"
                       onClick={async () => {
-                        if (!confirm('Reject this submission?')) return;
+                        const result = await popup.fire({
+                          title: 'Reject this submission?',
+                          icon: 'warning',
+                          showCancelButton: true,
+                          confirmButtonText: 'Continue',
+                          cancelButtonText: 'Cancel'
+                        });
+                        if (!result.isConfirmed) return;
                         await rejectSubmission(selectedSubmission.id);
                         closeSubmission();
                       }}
@@ -628,8 +682,17 @@ const Reports: React.FC<ReportsProps> = ({ user, reportPermissions, contractors,
                     <button
                       className="px-4 py-2 text-sm bg-emerald-600 text-white rounded-md"
                       onClick={async () => {
-                        if (!confirm('Verify this submission?')) return;
+                        const result = await popup.fire({
+                          title: 'Verify this submission?',
+                          text: 'This will mark the submission as verified.',
+                          icon: 'question',
+                          showCancelButton: true,
+                          confirmButtonText: 'Verify',
+                          cancelButtonText: 'Cancel'
+                        });
+                        if (!result.isConfirmed) return;
                         await verifySubmission(selectedSubmission.id);
+                        await popup.fire({ title: 'Success!', text: 'Submission verified.', icon: 'success' });
                         closeSubmission();
                       }}
                     >
@@ -654,7 +717,11 @@ const Reports: React.FC<ReportsProps> = ({ user, reportPermissions, contractors,
                         setIsEditingSubmission(false);
                         closeSubmission();
                       } catch (e: any) {
-                        alert(e?.message ?? 'Save failed (check JSON)');
+                        await popup.fire({
+                          title: 'Save failed',
+                          text: e?.message ?? 'Save failed (check JSON)',
+                          icon: 'error'
+                        });
                       }
                     }}
                   >

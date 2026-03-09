@@ -44,7 +44,7 @@ const Dashboard: React.FC<DashboardProps> = ({ contractors, summary }) => {
   ];
 
   const stats = [
-    { label: 'Total Contractors', value: summary?.contractors.total ?? contractors.length, icon: Users, color: 'bg-blue-500' },
+    { label: 'ENROLLED CONTRACTORS', value: summary?.contractors.total ?? contractors.length, icon: Users, color: 'bg-blue-500' },
     { label: 'Verified', value: summary?.contractors.verified ?? contractors.filter((c) => c.isVerified).length, icon: FileCheck2, color: 'bg-emerald-500' },
     { label: 'Reports (This Year)', value: summary?.submissions.total ?? 0, icon: TrendingUp, color: 'bg-amber-500' },
     { label: 'Regions Active', value: regions.length, icon: Globe2, color: 'bg-indigo-500' }

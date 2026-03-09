@@ -94,6 +94,7 @@ model Commodity {
   id               String      @id @default(cuid())
   name             String      @unique
   mineralType      MineralType
+  category         String?
   defaultUnitId    String?
   defaultUnit      Unit?       @relation(fields: [defaultUnitId], references: [id])
   /// Optional mapping to a specific MGB form template code (e.g., "MGB29-01").
@@ -156,6 +157,7 @@ model Contractor {
 
   permits               Permit[]
   contractorCommodities ContractorCommodity[]
+  contractorDocuments   ContractorDocument[]
   submissions           Submission[]
 
   createdAt           DateTime            @default(now())
@@ -256,6 +258,29 @@ model Attachment {
   uploadedAt   DateTime @default(now())
 
   @@index([submissionId])
+}
+
+enum DocumentType {
+  BUSINESS_PERMIT
+  SAFETY_CERTIFICATION
+  INSURANCE_DOCUMENT
+  COMPLIANCE_CERTIFICATE
+}
+
+model ContractorDocument {
+  id           String     @id @default(cuid())
+  contractorId String
+  contractor   Contractor @relation(fields: [contractorId], references: [id], onDelete: Cascade)
+
+  type         DocumentType
+  originalName String
+  mimeType     String
+  fileName     String
+  filePath     String
+  sizeBytes    Int
+  uploadedAt   DateTime @default(now())
+
+  @@index([contractorId])
 }
 
 model ReportPermission {

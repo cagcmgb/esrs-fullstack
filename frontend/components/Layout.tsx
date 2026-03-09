@@ -21,7 +21,21 @@ interface LayoutProps {
 }
 
 const Layout: React.FC<LayoutProps> = ({ user, activeTab, setActiveTab, onLogout, children }) => {
-  const [isSidebarOpen, setIsSidebarOpen] = React.useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = React.useState(() => {
+    try {
+      return typeof window !== 'undefined' ? window.innerWidth >= 1024 : true;
+    } catch {
+      return true;
+    }
+  });
+
+  React.useEffect(() => {
+    const onResize = () => {
+      if (window.innerWidth >= 1024) setIsSidebarOpen(true);
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   const navigation: Array<{ name: string; icon: any; roles: (UserRole | string)[] }> = [
     { name: 'Dashboard', icon: LayoutDashboard, roles: USER_ROLES },
@@ -36,7 +50,7 @@ const Layout: React.FC<LayoutProps> = ({ user, activeTab, setActiveTab, onLogout
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden">
       {/* Sidebar */}
-      <aside className={`bg-slate-900 text-white w-64 flex-shrink-0 transition-all duration-300 transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 fixed lg:relative z-30 h-full`}>
+      <aside aria-hidden={!isSidebarOpen} className={`bg-slate-900 text-white w-64 flex-shrink-0 transition-all duration-300 transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 fixed lg:relative z-30 h-full`}>
         <div className="p-6 flex items-center gap-3">
           <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-xl">M</div>
           <div>
@@ -81,6 +95,15 @@ const Layout: React.FC<LayoutProps> = ({ user, activeTab, setActiveTab, onLogout
           </button>
         </div>
       </aside>
+
+      {/* Mobile overlay when sidebar is open */}
+      {isSidebarOpen && (
+        <div
+          className="lg:hidden fixed inset-0 bg-black/40 z-20"
+          onClick={() => setIsSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto flex flex-col">

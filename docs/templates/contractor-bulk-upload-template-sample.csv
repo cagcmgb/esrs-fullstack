@@ -1,0 +1,2 @@
+name,tin,operatorName,contactNo,email,regionCode,regionName,provinceCode,provinceName,municipalityCode,municipalityName,areaHectare,status,commodities
+ABC Mining Corp,123456789012,Juan Dela Cruz,09171234567,abc.mining@example.com,020000000,Region II (Cagayan Valley),021500000,Cagayan,021505000,Tuguegarao City,125.50,Active,Gold|Copper

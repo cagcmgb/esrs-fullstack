@@ -5,6 +5,9 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 import { requireAuth } from '../middleware/auth.js';
 import { UserRole } from '@prisma/client';
 import { badRequest, forbidden, notFound, unauthorized } from '../utils/httpError.js';
+import multer from 'multer';
+import fs from 'fs';
+import path from 'path';
 
 export const contractorsRouter = Router();
 
@@ -59,6 +62,28 @@ contractorsRouter.get(
   })
 );
 
+// Multer storage for contractor documents
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const contractorId = req.params.id || 'tmp';
+    const dest = path.join(process.cwd(), 'backend', 'uploads', 'contractors', contractorId);
+    fs.mkdirSync(dest, { recursive: true });
+    cb(null, dest);
+  },
+  filename: (req, file, cb) => {
+    const safe = file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+    cb(null, `${Date.now()}-${safe}`);
+  }
+});
+
+const fileFilter = (req: any, file: Express.Multer.File, cb: any) => {
+  const allowed = ['application/pdf', 'image/png', 'image/jpeg', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+  if (allowed.includes(file.mimetype)) cb(null, true);
+  else cb(null, false);
+};
+
+const upload = multer({ storage, fileFilter });
+
 const permitSchema = z.object({
   permitTypeId: z.string().min(1),
   permitNumber: z.string().min(1),
@@ -68,7 +93,7 @@ const permitSchema = z.object({
 
 const createSchema = z.object({
   name: z.string().min(1),
-  tin: z.string().min(1),
+  tin: z.string().min(1).refine((v) => v.replace(/\D/g, '').length === 12, { message: 'TIN must be a 12-digit corporate TIN' }),
   operatorName: z.string().min(1),
   contactNo: z.string().min(1),
   email: z.string().email(),
@@ -83,6 +108,11 @@ const createSchema = z.object({
   commodityIds: z.array(z.string().min(1)).min(1),
   permits: z.array(permitSchema).optional().default([])
 });
+
+const toUpperTrim = (value: string | null | undefined): string | undefined => {
+  if (value === null || value === undefined) return undefined;
+  return value.trim().toUpperCase();
+};
 
 contractorsRouter.post(
   '/',
@@ -99,28 +129,46 @@ contractorsRouter.post(
     }
 
     const body = createSchema.parse(req.body);
+    const normalized = {
+      ...body,
+      name: toUpperTrim(body.name) ?? body.name,
+      tin: toUpperTrim(body.tin) ?? body.tin,
+      operatorName: toUpperTrim(body.operatorName) ?? body.operatorName,
+      contactNo: toUpperTrim(body.contactNo) ?? body.contactNo,
+      email: toUpperTrim(body.email) ?? body.email,
+      regionCode: toUpperTrim(body.regionCode) ?? body.regionCode,
+      regionName: toUpperTrim(body.regionName) ?? body.regionName,
+      provinceCode: toUpperTrim(body.provinceCode) ?? body.provinceCode,
+      provinceName: toUpperTrim(body.provinceName) ?? body.provinceName,
+      municipalityCode: toUpperTrim(body.municipalityCode) ?? body.municipalityCode,
+      municipalityName: toUpperTrim(body.municipalityName) ?? body.municipalityName,
+      permits: body.permits.map((p) => ({
+        ...p,
+        permitNumber: toUpperTrim(p.permitNumber) ?? p.permitNumber
+      }))
+    };
 
     const contractor = await prisma.contractor.create({
       data: {
-        name: body.name,
-        tin: body.tin,
-        operatorName: body.operatorName,
-        contactNo: body.contactNo,
-        email: body.email,
-        regionCode: body.regionCode,
-        regionName: body.regionName,
-        provinceCode: body.provinceCode ?? null,
-        provinceName: body.provinceName,
-        municipalityCode: body.municipalityCode ?? null,
-        municipalityName: body.municipalityName,
-        areaHectare: body.areaHectare,
-        statusId: body.statusId,
+        name: normalized.name,
+        tin: normalized.tin,
+        operatorName: normalized.operatorName,
+        contactNo: normalized.contactNo,
+        email: normalized.email,
+        regionCode: normalized.regionCode,
+        regionName: normalized.regionName,
+        provinceCode: normalized.provinceCode ?? null,
+        provinceName: normalized.provinceName,
+        municipalityCode: normalized.municipalityCode ?? null,
+        municipalityName: normalized.municipalityName,
+        areaHectare: normalized.areaHectare,
+        statusId: normalized.statusId,
         createdById: req.user.id,
         contractorCommodities: {
-          create: body.commodityIds.map((commodityId) => ({ commodityId }))
+          create: normalized.commodityIds.map((commodityId) => ({ commodityId }))
         },
         permits: {
-          create: body.permits.map((p) => ({
+          create: normalized.permits.map((p) => ({
             permitTypeId: p.permitTypeId,
             permitNumber: p.permitNumber,
             dateApproved: p.dateApproved ? new Date(p.dateApproved) : null,
@@ -209,9 +257,27 @@ contractorsRouter.put(
     }
 
     const body = updateSchema.parse(req.body);
+    const normalized = {
+      ...body,
+      name: toUpperTrim(body.name),
+      tin: toUpperTrim(body.tin),
+      operatorName: toUpperTrim(body.operatorName),
+      contactNo: toUpperTrim(body.contactNo),
+      email: toUpperTrim(body.email),
+      regionCode: toUpperTrim(body.regionCode),
+      regionName: toUpperTrim(body.regionName),
+      provinceCode: toUpperTrim(body.provinceCode),
+      provinceName: toUpperTrim(body.provinceName),
+      municipalityCode: toUpperTrim(body.municipalityCode),
+      municipalityName: toUpperTrim(body.municipalityName),
+      permits: body.permits?.map((p) => ({
+        ...p,
+        permitNumber: toUpperTrim(p.permitNumber) ?? p.permitNumber
+      }))
+    };
 
     // Split nested collections vs scalar fields.
-    const { commodityIds, permits, ...scalar } = body;
+    const { commodityIds, permits, statusId, ...scalar } = normalized;
 
     // If commodityIds present, replace join table
     const commodityUpdate = commodityIds
@@ -248,6 +314,7 @@ contractorsRouter.put(
       where: { id: req.params.id },
       data: {
         ...scalar,
+        ...(statusId ? { status: { connect: { id: statusId } } } : {}),
         provinceCode: scalar.provinceCode ?? undefined,
         municipalityCode: scalar.municipalityCode ?? undefined,
         contractorCommodities: commodityUpdate,
@@ -261,6 +328,75 @@ contractorsRouter.put(
     });
 
     res.json(contractor);
+  })
+);
+
+// List contractor documents
+contractorsRouter.get(
+  '/:id/documents',
+  asyncHandler(async (req, res) => {
+    if (!req.user) throw unauthorized();
+    const contractor = await prisma.contractor.findUnique({ where: { id: req.params.id } });
+    if (!contractor) throw notFound('Contractor not found');
+
+    const docs = await (prisma as any).contractorDocument.findMany({ where: { contractorId: contractor.id }, orderBy: { uploadedAt: 'desc' } });
+    res.json(docs);
+  })
+);
+
+// Upload contractor documents (multiple)
+contractorsRouter.post(
+  '/:id/documents',
+  upload.any(),
+  asyncHandler(async (req, res) => {
+    if (!req.user) throw unauthorized();
+    const contractor = await prisma.contractor.findUnique({ where: { id: req.params.id } });
+    if (!contractor) throw notFound('Contractor not found');
+
+    const created: any[] = [];
+    const files: Express.Multer.File[] = (req.files as Express.Multer.File[]) || [];
+    const allowedFieldNames = new Set(['requiredDocuments', 'businessPermit', 'safetyCertification', 'insuranceDocument', 'complianceCertificate']);
+
+    for (const f of files) {
+      if (!allowedFieldNames.has(f.fieldname)) continue;
+      const record = await (prisma as any).contractorDocument.create({
+        data: {
+          contractorId: contractor.id,
+          type: 'COMPLIANCE_CERTIFICATE',
+          originalName: f.originalname,
+          mimeType: f.mimetype,
+          fileName: f.filename,
+          filePath: f.path,
+          sizeBytes: f.size
+        }
+      });
+      created.push(record);
+    }
+
+    res.status(201).json(created);
+  })
+);
+
+// Delete a contractor document
+contractorsRouter.delete(
+  '/:id/documents/:docId',
+  asyncHandler(async (req, res) => {
+    if (!req.user) throw unauthorized();
+    const contractor = await prisma.contractor.findUnique({ where: { id: req.params.id } });
+    if (!contractor) throw notFound('Contractor not found');
+
+    const doc = await (prisma as any).contractorDocument.findUnique({ where: { id: req.params.docId } });
+    if (!doc || doc.contractorId !== contractor.id) throw notFound('Document not found');
+
+    // delete file from disk if exists
+    try {
+      if (doc.filePath && fs.existsSync(doc.filePath)) fs.unlinkSync(doc.filePath);
+    } catch (e) {
+      // ignore
+    }
+
+    await (prisma as any).contractorDocument.delete({ where: { id: doc.id } });
+    res.json({ success: true });
   })
 );
 

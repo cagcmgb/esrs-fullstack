@@ -5,6 +5,9 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 import { requireAuth } from '../middleware/auth.js';
 import { UserRole } from '@prisma/client';
 import { badRequest, forbidden, notFound, unauthorized } from '../utils/httpError.js';
+import multer from 'multer';
+import fs from 'fs';
+import path from 'path';
 export const contractorsRouter = Router();
 contractorsRouter.use(requireAuth);
 contractorsRouter.get('/', asyncHandler(async (req, res) => {
@@ -49,6 +52,27 @@ contractorsRouter.get('/', asyncHandler(async (req, res) => {
     });
     res.json(contractors);
 }));
+// Multer storage for contractor documents
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        const contractorId = req.params.id || 'tmp';
+        const dest = path.join(process.cwd(), 'backend', 'uploads', 'contractors', contractorId);
+        fs.mkdirSync(dest, { recursive: true });
+        cb(null, dest);
+    },
+    filename: (req, file, cb) => {
+        const safe = file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+        cb(null, `${Date.now()}-${safe}`);
+    }
+});
+const fileFilter = (req, file, cb) => {
+    const allowed = ['application/pdf', 'image/png', 'image/jpeg', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+    if (allowed.includes(file.mimetype))
+        cb(null, true);
+    else
+        cb(null, false);
+};
+const upload = multer({ storage, fileFilter });
 const permitSchema = z.object({
     permitTypeId: z.string().min(1),
     permitNumber: z.string().min(1),
@@ -57,7 +81,7 @@ const permitSchema = z.object({
 });
 const createSchema = z.object({
     name: z.string().min(1),
-    tin: z.string().min(1),
+    tin: z.string().min(1).refine((v) => v.replace(/\D/g, '').length === 12, { message: 'TIN must be a 12-digit corporate TIN' }),
     operatorName: z.string().min(1),
     contactNo: z.string().min(1),
     email: z.string().email(),
@@ -220,6 +244,70 @@ contractorsRouter.put('/:id', asyncHandler(async (req, res) => {
         }
     });
     res.json(contractor);
+}));
+// List contractor documents
+contractorsRouter.get('/:id/documents', asyncHandler(async (req, res) => {
+    if (!req.user)
+        throw unauthorized();
+    const contractor = await prisma.contractor.findUnique({ where: { id: req.params.id } });
+    if (!contractor)
+        throw notFound('Contractor not found');
+    const docs = await prisma.contractorDocument.findMany({ where: { contractorId: contractor.id }, orderBy: { uploadedAt: 'desc' } });
+    res.json(docs);
+}));
+// Upload contractor documents (multiple)
+contractorsRouter.post('/:id/documents', upload.any(), asyncHandler(async (req, res) => {
+    if (!req.user)
+        throw unauthorized();
+    const contractor = await prisma.contractor.findUnique({ where: { id: req.params.id } });
+    if (!contractor)
+        throw notFound('Contractor not found');
+    const fieldTypeMap = {
+        businessPermit: 'BUSINESS_PERMIT',
+        safetyCertification: 'SAFETY_CERTIFICATION',
+        insuranceDocument: 'INSURANCE_DOCUMENT',
+        complianceCertificate: 'COMPLIANCE_CERTIFICATE'
+    };
+    const created = [];
+    const files = req.files || [];
+    for (const f of files) {
+        // attempt to infer type from fieldname
+        const type = fieldTypeMap[f.fieldname] ?? 'COMPLIANCE_CERTIFICATE';
+        const record = await prisma.contractorDocument.create({
+            data: {
+                contractorId: contractor.id,
+                type,
+                originalName: f.originalname,
+                mimeType: f.mimetype,
+                fileName: f.filename,
+                filePath: f.path,
+                sizeBytes: f.size
+            }
+        });
+        created.push(record);
+    }
+    res.status(201).json(created);
+}));
+// Delete a contractor document
+contractorsRouter.delete('/:id/documents/:docId', asyncHandler(async (req, res) => {
+    if (!req.user)
+        throw unauthorized();
+    const contractor = await prisma.contractor.findUnique({ where: { id: req.params.id } });
+    if (!contractor)
+        throw notFound('Contractor not found');
+    const doc = await prisma.contractorDocument.findUnique({ where: { id: req.params.docId } });
+    if (!doc || doc.contractorId !== contractor.id)
+        throw notFound('Document not found');
+    // delete file from disk if exists
+    try {
+        if (doc.filePath && fs.existsSync(doc.filePath))
+            fs.unlinkSync(doc.filePath);
+    }
+    catch (e) {
+        // ignore
+    }
+    await prisma.contractorDocument.delete({ where: { id: doc.id } });
+    res.json({ success: true });
 }));
 function pad3(n) {
     const s = String(n);

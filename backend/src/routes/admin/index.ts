@@ -10,6 +10,7 @@ import { commoditiesRouter } from './commodities.js';
 import { reportPermissionsRouter } from './reportPermissions.js';
 import { regionConfigsRouter } from './regionConfigs.js';
 import { countriesRouter } from './countries.js';
+import { adminContractorsRouter } from './contractors.js';
 
 export const adminRouter = Router();
 
@@ -25,3 +26,4 @@ adminRouter.use('/report-permissions', reportPermissionsRouter);
 // Mount at `/regions` to match frontend Admin component expectations
 adminRouter.use('/regions', regionConfigsRouter);
 adminRouter.use('/countries', countriesRouter);
+adminRouter.use('/contractors', adminContractorsRouter);

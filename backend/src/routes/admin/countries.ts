@@ -8,7 +8,7 @@ export const countriesRouter = Router();
 countriesRouter.get(
   '/',
   asyncHandler(async (_req, res) => {
-    const items = await prisma.$queryRaw<any[]>`SELECT "id","name","isActive","sortOrder","createdAt" FROM "Country" ORDER BY "sortOrder" ASC`;
+    const items = await prisma.country.findMany({ orderBy: { sortOrder: 'asc' } });
     res.json(items);
   })
 );
@@ -23,15 +23,8 @@ countriesRouter.post(
   '/',
   asyncHandler(async (req, res) => {
     const body = schema.parse(req.body);
-    const id = String(Date.now()) + Math.random().toString(36).slice(2);
-    const row = (await prisma.$queryRawUnsafe(
-      `INSERT INTO "Country" ("id","name","isActive","sortOrder","createdAt") VALUES ($1,$2,$3,$4,now()) RETURNING *`,
-      id,
-      body.name,
-      body.isActive,
-      body.sortOrder
-    )) as any;
-    res.status(201).json(row[0] ?? row);
+    const item = await prisma.country.create({ data: { name: body.name, isActive: body.isActive ?? true, sortOrder: body.sortOrder ?? 0 } });
+    res.status(201).json(item);
   })
 );
 
@@ -40,14 +33,8 @@ countriesRouter.put(
   asyncHandler(async (req, res) => {
     const { id } = req.params;
     const body = schema.partial().parse(req.body);
-    const row = (await prisma.$queryRawUnsafe(
-      `UPDATE "Country" SET "name" = $2, "isActive" = $3, "sortOrder" = $4 WHERE "id" = $1 RETURNING *`,
-      id,
-      body.name ?? undefined,
-      body.isActive ?? undefined,
-      body.sortOrder ?? undefined
-    )) as any;
-    res.json(row[0] ?? row);
+    const item = await prisma.country.update({ where: { id }, data: { ...(body as any) } });
+    res.json(item);
   })
 );
 
@@ -55,7 +42,7 @@ countriesRouter.delete(
   '/:id',
   asyncHandler(async (req, res) => {
     const { id } = req.params;
-    await prisma.$executeRawUnsafe(`UPDATE "Country" SET "isActive" = false WHERE "id" = $1`, id);
+    await prisma.country.update({ where: { id }, data: { isActive: false } });
     res.json({ ok: true });
   })
 );

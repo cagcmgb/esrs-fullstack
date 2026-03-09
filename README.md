@@ -90,6 +90,21 @@ After `npm run db:seed`, you can log in with:
 2. Central Office / Admin verifies the contractor
 3. Upon verification, the system assigns a **region-based Contractor ID** (e.g., `R2-001`).
 
+### Admin Bulk Contractor Enrollment
+
+Admins can bulk enroll contractors from **CSV** or **Excel (.xlsx)** in Admin Panel → Pre-select Lists → Bulk Enroll Contractors.
+
+- Download template endpoints:
+  - `GET /api/admin/contractors/import-template?format=csv`
+  - `GET /api/admin/contractors/import-template?format=xlsx`
+- Upload endpoint:
+  - `POST /api/admin/contractors/import` (form-data with `file`)
+- Required headers:
+  - `name,tin,operatorName,contactNo,email,regionCode,regionName,provinceCode,provinceName,municipalityCode,municipalityName,areaHectare,status,commodities`
+- `commodities` accepts multiple values separated by `|`, `,`, or `;` (by commodity name or commodity ID).
+
+Starter CSV template file is also included at `docs/templates/contractor-bulk-upload-template.csv`.
+
 ### Data Entry + Submission
 
 1. Select verified contractor + commodity + month/year

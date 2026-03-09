@@ -15,6 +15,7 @@ const schema = z.object({
     mineralType: z.enum(['METALLIC', 'NON_METALLIC']),
     defaultUnitId: z.string().optional().nullable(),
     formTemplateCode: z.string().optional().nullable(),
+    category: z.string().optional().nullable(),
     isActive: z.boolean().optional().default(true)
 });
 commoditiesRouter.post('/', asyncHandler(async (req, res) => {

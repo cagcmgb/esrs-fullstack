@@ -36,6 +36,7 @@ export interface Commodity {
   id: string;
   name: string;
   mineralType: MineralType;
+  category?: string | null;
   defaultUnitId?: string | null;
   defaultUnit?: Unit | null;
   formTemplateCode?: string | null;
