@@ -1,7 +1,7 @@
 import type { User } from './types';
 
 const API_BASE =
-  import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000/api';
+  (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, '') || '/api';
 
 export class ApiError extends Error {
   status: number;
@@ -85,4 +85,37 @@ export async function login(
 
 export async function getMe(): Promise<User> {
   return apiFetch('/auth/me');
+}
+
+export async function downloadFile(path: string, filename?: string) {
+  const token = getToken();
+
+  const headers: Record<string, string> = {};
+
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const url = `${API_BASE}${path}`;
+
+  const res = await fetch(url, {
+    method: 'GET',
+    headers
+  });
+
+  if (!res.ok) {
+    throw new ApiError('Failed to download file', res.status);
+  }
+
+  const blob = await res.blob();
+  const blobUrl = window.URL.createObjectURL(blob);
+
+  const a = document.createElement('a');
+  a.href = blobUrl;
+  a.download = filename || 'download';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+
+  window.URL.revokeObjectURL(blobUrl);
 }

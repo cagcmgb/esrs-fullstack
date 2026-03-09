@@ -38,7 +38,7 @@ const TEMPLATE_SAMPLE_ROW = [
   '021505000',
   'Tuguegarao City',
   '125.50',
-  'Active',
+  'Operating',
   'Gold|Copper'
 ] as const;
 
@@ -185,6 +185,11 @@ function splitList(value: string): string[] {
     .filter(Boolean);
 }
 
+function toUpperTrim(value: string | null | undefined): string | undefined {
+  if (value === null || value === undefined) return undefined;
+  return String(value).trim().toUpperCase();
+}
+
 adminContractorsRouter.get(
   '/import-template',
   asyncHandler(async (req, res) => {
@@ -280,40 +285,64 @@ adminContractorsRouter.post(
           commodities: row.commodities
         });
 
-        const statusId = statusMap.get(parsed.status.toLowerCase());
+        const statusRaw = String(parsed.status).trim();
+        const statusId = statusMap.get(statusRaw.toLowerCase());
         if (!statusId) {
-          throw new Error(`Unknown status: ${parsed.status}`);
+          const allowedStatuses = statuses.map((s) => s.name).sort((a, b) => a.localeCompare(b)).join(', ');
+          throw new Error(`Unknown status: "${statusRaw}". Allowed statuses: ${allowedStatuses}`);
         }
 
-        const commodityIds = Array.from(
-          new Set(
-            splitList(parsed.commodities).map((item) => {
-              const resolved = commodityMap.get(item.toLowerCase());
-              if (!resolved) {
-                throw new Error(`Unknown commodity: ${item}`);
-              }
-              return resolved;
-            })
-          )
-        );
+        const commodityValues = splitList(parsed.commodities);
+        const unknownCommodities: string[] = [];
+        const resolvedCommodityIds: string[] = [];
+
+        for (const item of commodityValues) {
+          const resolved = commodityMap.get(item.toLowerCase());
+          if (!resolved) {
+            unknownCommodities.push(item);
+            continue;
+          }
+          resolvedCommodityIds.push(resolved);
+        }
+
+        if (unknownCommodities.length > 0) {
+          const allowedCommodities = commodities.map((c) => c.name).sort((a, b) => a.localeCompare(b)).join(', ');
+          throw new Error(`Unknown commodity value(s): ${unknownCommodities.join(', ')}. Allowed commodities: ${allowedCommodities}`);
+        }
+
+        const commodityIds = Array.from(new Set(resolvedCommodityIds));
 
         if (commodityIds.length === 0) {
           throw new Error('At least one commodity is required');
         }
 
+        const normalized = {
+          name: toUpperTrim(parsed.name) ?? parsed.name,
+          tin: toUpperTrim(parsed.tin) ?? parsed.tin,
+          operatorName: toUpperTrim(parsed.operatorName) ?? parsed.operatorName,
+          contactNo: toUpperTrim(parsed.contactNo) ?? parsed.contactNo,
+          email: toUpperTrim(parsed.email) ?? parsed.email,
+          regionCode: toUpperTrim(parsed.regionCode) ?? parsed.regionCode,
+          regionName: toUpperTrim(parsed.regionName) ?? parsed.regionName,
+          provinceCode: toUpperTrim(parsed.provinceCode) ?? parsed.provinceCode,
+          provinceName: toUpperTrim(parsed.provinceName) ?? parsed.provinceName,
+          municipalityCode: toUpperTrim(parsed.municipalityCode) ?? parsed.municipalityCode,
+          municipalityName: toUpperTrim(parsed.municipalityName) ?? parsed.municipalityName
+        };
+
         await prisma.contractor.create({
           data: {
-            name: parsed.name,
-            tin: parsed.tin,
-            operatorName: parsed.operatorName,
-            contactNo: parsed.contactNo,
-            email: parsed.email,
-            regionCode: parsed.regionCode,
-            regionName: parsed.regionName,
-            provinceCode: parsed.provinceCode ?? null,
-            provinceName: parsed.provinceName,
-            municipalityCode: parsed.municipalityCode ?? null,
-            municipalityName: parsed.municipalityName,
+            name: normalized.name,
+            tin: normalized.tin,
+            operatorName: normalized.operatorName,
+            contactNo: normalized.contactNo,
+            email: normalized.email,
+            regionCode: normalized.regionCode,
+            regionName: normalized.regionName,
+            provinceCode: normalized.provinceCode ?? null,
+            provinceName: normalized.provinceName,
+            municipalityCode: normalized.municipalityCode ?? null,
+            municipalityName: normalized.municipalityName,
             areaHectare: parsed.areaHectare,
             statusId,
             createdById: req.user.id,
