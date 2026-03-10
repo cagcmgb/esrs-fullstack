@@ -149,7 +149,7 @@ const App: React.FC = () => {
         />
       )}
 
-      {activeTab === 'Reports' && (user.role === 'ADMIN' || user.role === 'CENTRAL_OFFICE') && (
+      {activeTab === 'Reports' && (user.role === 'ADMIN' || user.role === 'CENTRAL_OFFICE' || user.role === 'REGIONAL_ECONOMIST') && (
         <Reports
           user={user}
           reportPermissions={settings.reportPermissions}
