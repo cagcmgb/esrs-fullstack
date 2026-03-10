@@ -32,6 +32,21 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
     }
   };
 
+  const handleQuickLogin = async (username: string) => {
+    setError('');
+    setLoading(true);
+    try {
+      const result = await login(username, 'password');
+      setToken(result.token);
+      setSuccess('Signed in successfully.');
+      setTimeout(() => onLogin(result.user), 450);
+    } catch (err: any) {
+      setError(err?.message ?? 'Login failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const quickRoles: Array<{ label: string; user: string; role: UserRole | string; icon: any; color: string }> = [
     { role: 'ADMIN', label: 'Admin', user: 'admin', icon: ShieldCheck, color: 'bg-indigo-600' },
     { role: 'CENTRAL_OFFICE', label: 'Central', user: 'central', icon: Building2, color: 'bg-blue-600' },
@@ -110,10 +125,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
               <button
                 key={item.user}
                 type="button"
-                onClick={() => {
-                  setUsernameOrEmail(item.user);
-                  setPassword('password');
-                }}
+                onClick={() => handleQuickLogin(item.user)}
                 className="flex flex-col items-center gap-2 p-3 rounded-xl border border-slate-100 hover:border-blue-200 hover:bg-blue-50 transition-all group"
               >
                 <div className={`w-8 h-8 rounded-lg ${item.color} flex items-center justify-center text-white shadow-md group-hover:scale-110 transition-transform`}>

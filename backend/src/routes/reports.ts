@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../prisma.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, requireRole } from '../middleware/auth.js';
 import { UserRole, ReportType, SubmissionStatus } from '@prisma/client';
 import { forbidden, unauthorized } from '../utils/httpError.js';
 import { createStandardSheet, sendWorkbook } from '../reports/workbook.js';
@@ -9,6 +9,7 @@ import { createStandardSheet, sendWorkbook } from '../reports/workbook.js';
 export const reportsRouter = Router();
 
 reportsRouter.use(requireAuth);
+reportsRouter.use(requireRole([UserRole.ADMIN, UserRole.CENTRAL_OFFICE, UserRole.REGIONAL_ECONOMIST]));
 
 async function assertCanViewReport(user: { role: any; id: string }, reportType: ReportType) {
   if (user.role === UserRole.ADMIN) return;
