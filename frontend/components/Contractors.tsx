@@ -587,7 +587,7 @@ const Contractors: React.FC<ContractorsProps> = ({ user, contractors, permitType
                   <label className="block text-xs font-bold text-slate-600 mb-1">Contractor/Company Name</label>
                   <input
                     disabled={modal.mode === 'view'}
-                    className="w-full p-2.5 border border-slate-200 rounded-lg disabled:bg-slate-50"
+                    className="w-full p-2.5 border border-slate-200 rounded-lg disabled:bg-slate-50 uppercase"
                     value={form.name}
                     onChange={(e) => setForm({ ...form, name: toUpper(e.target.value) })}
                   />
@@ -596,7 +596,7 @@ const Contractors: React.FC<ContractorsProps> = ({ user, contractors, permitType
                   <label className="block text-xs font-bold text-slate-600 mb-1">Tax Identification Number (TIN)</label>
                   <input
                     disabled={modal.mode === 'view'}
-                    className="w-full p-2.5 border border-slate-200 rounded-lg disabled:bg-slate-50"
+                    className="w-full p-2.5 border border-slate-200 rounded-lg disabled:bg-slate-50 uppercase"
                     placeholder="12-digit corporate TIN"
                     pattern="[0-9\- ]{12,}"
                     value={form.tin}
@@ -608,7 +608,7 @@ const Contractors: React.FC<ContractorsProps> = ({ user, contractors, permitType
                   <label className="block text-xs font-bold text-slate-600 mb-1">Operator Name</label>
                   <input
                     disabled={modal.mode === 'view'}
-                    className="w-full p-2.5 border border-slate-200 rounded-lg disabled:bg-slate-50"
+                    className="w-full p-2.5 border border-slate-200 rounded-lg disabled:bg-slate-50 uppercase"
                     value={form.operatorName}
                     onChange={(e) => setForm({ ...form, operatorName: toUpper(e.target.value) })}
                   />
@@ -617,7 +617,7 @@ const Contractors: React.FC<ContractorsProps> = ({ user, contractors, permitType
                   <label className="block text-xs font-bold text-slate-600 mb-1">Contact No.</label>
                   <input
                     disabled={modal.mode === 'view'}
-                    className="w-full p-2.5 border border-slate-200 rounded-lg disabled:bg-slate-50"
+                    className="w-full p-2.5 border border-slate-200 rounded-lg disabled:bg-slate-50 uppercase"
                     value={form.contactNo}
                     onChange={(e) => setForm({ ...form, contactNo: toUpper(e.target.value) })}
                   />
@@ -625,7 +625,13 @@ const Contractors: React.FC<ContractorsProps> = ({ user, contractors, permitType
 
                 <div>
                   <label className="block text-xs font-bold text-slate-600 mb-1">Email</label>
-                  <input type="email" className="w-full p-2.5 border border-slate-200 rounded-lg" value={form.email} onChange={(e) => setForm({ ...form, email: toUpper(e.target.value) })} />
+                  <input
+                    type="email"
+                    disabled={modal.mode === 'view'}
+                    className="w-full p-2.5 border border-slate-200 rounded-lg disabled:bg-slate-50 uppercase"
+                    value={form.email}
+                    onChange={(e) => setForm({ ...form, email: toUpper(e.target.value) })}
+                  />
                 </div>
 
                 <div>
@@ -820,7 +826,7 @@ const Contractors: React.FC<ContractorsProps> = ({ user, contractors, permitType
                     <div className="md:col-span-2">
                       <label className="block text-[10px] font-bold text-slate-500 mb-1">Permit Number</label>
                       <input
-                        className="w-full p-2 border border-slate-200 rounded-lg"
+                        className="w-full p-2 border border-slate-200 rounded-lg uppercase"
                         value={p.permitNumber}
                         onChange={(e) => {
                           const permits = [...form.permits];
