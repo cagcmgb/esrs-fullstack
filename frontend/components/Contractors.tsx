@@ -80,11 +80,21 @@ const Contractors: React.FC<ContractorsProps> = ({ user, contractors, permitType
       try {
         const r = await apiFetch<NamedCode[]>('/locations/regions');
         setRegions(r);
+        // Pre-populate region for REGIONAL_ECONOMIST users when creating
+        if (modal.mode === 'create' && user.role === 'REGIONAL_ECONOMIST' && user.regionCode) {
+          const match = r.find((reg) => reg.code === user.regionCode);
+          if (match) {
+            setForm((prev) => ({ ...prev, regionCode: match.code, regionName: match.name }));
+            const p = await apiFetch<NamedCode[]>(`/locations/regions/${match.code}/provinces`);
+            setProvinces(p);
+            setCities([]);
+          }
+        }
       } catch (e) {
         // ignore
       }
     })();
-  }, [modal]);
+  }, [modal, user.role, user.regionCode]);
 
   const loadProvinces = async (regionCode: string) => {
     if (!regionCode) {
@@ -704,6 +714,7 @@ const Contractors: React.FC<ContractorsProps> = ({ user, contractors, permitType
                       });
                       await loadProvinces(code);
                     }}
+                    disabled={modal?.mode === 'view' || (modal?.mode === 'create' && user.role === 'REGIONAL_ECONOMIST')}
                   >
                     <option value="">Select Region</option>
                     {regions.map((r) => (
@@ -713,7 +724,7 @@ const Contractors: React.FC<ContractorsProps> = ({ user, contractors, permitType
                     ))}
                   </select>
                   {user.role === 'REGIONAL_ECONOMIST' && user.regionCode && (
-                    <p className="text-[10px] text-slate-500 mt-1">Note: Regional Economist accounts are typically limited to their assigned region.</p>
+                    <p className="text-[10px] text-slate-500 mt-1">Region is locked to your assigned region.</p>
                   )}
                 </div>
 
