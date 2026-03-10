@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../prisma.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, requireRole } from '../middleware/auth.js';
 import { UserRole } from '@prisma/client';
 import { badRequest, forbidden, notFound, unauthorized } from '../utils/httpError.js';
 import multer from 'multer';
@@ -12,6 +12,7 @@ import path from 'path';
 export const contractorsRouter = Router();
 
 contractorsRouter.use(requireAuth);
+contractorsRouter.use(requireRole([UserRole.ADMIN, UserRole.CENTRAL_OFFICE, UserRole.REGIONAL_ECONOMIST]));
 
 contractorsRouter.get(
   '/',

@@ -73,7 +73,10 @@ const App: React.FC = () => {
     try {
       const me = await getMe();
       setUser(me);
-      await Promise.all([refreshSettings(), refreshContractors(), refreshSubmissions(), refreshDashboard()]);
+      const isGuest = me.role === 'GUEST';
+      const loads: Promise<any>[] = [refreshSettings(), refreshDashboard()];
+      if (!isGuest) loads.push(refreshContractors(), refreshSubmissions());
+      await Promise.all(loads);
     } catch (e) {
       // No valid session
       setUser(null);
@@ -90,7 +93,10 @@ const App: React.FC = () => {
 
   const handleLogin = async (me: User) => {
     setUser(me);
-    await Promise.all([refreshSettings(), refreshContractors(), refreshSubmissions(), refreshDashboard()]);
+    const isGuest = me.role === 'GUEST';
+    const loads: Promise<any>[] = [refreshSettings(), refreshDashboard()];
+    if (!isGuest) loads.push(refreshContractors(), refreshSubmissions());
+    await Promise.all(loads);
   };
 
   const handleLogout = () => {
@@ -115,7 +121,7 @@ const App: React.FC = () => {
     <Layout user={user} activeTab={activeTab} setActiveTab={setActiveTab} onLogout={handleLogout}>
       {activeTab === 'Dashboard' && <Dashboard contractors={contractors} summary={summary} />}
 
-      {activeTab === 'Contractors' && (
+      {activeTab === 'Contractors' && user.role !== 'GUEST' && (
         <Contractors
           user={user}
           contractors={contractors}
@@ -143,7 +149,7 @@ const App: React.FC = () => {
         />
       )}
 
-      {activeTab === 'Reports' && (
+      {activeTab === 'Reports' && (user.role === 'ADMIN' || user.role === 'CENTRAL_OFFICE') && (
         <Reports
           user={user}
           reportPermissions={settings.reportPermissions}
