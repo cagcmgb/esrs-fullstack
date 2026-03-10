@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import type { Commodity, ContractorStatus, PermitType, ReportPermission, Unit, User, UserRole, ReportType } from '../types';
 import { apiFetch, downloadFile } from '../api';
 import { USER_ROLES } from '../types';
-import { Plus, Trash2, UserCog } from 'lucide-react';
+import { Pencil, Plus, Trash2, UserCog } from 'lucide-react';
 import { REPORT_TITLES } from '../constants';
 import Swal from 'sweetalert2';
 
@@ -71,11 +71,16 @@ const Admin: React.FC<AdminProps> = ({ user, permitTypes, statuses, commodities,
   }, []);
 
   // -------------------- USERS --------------------
+  const MIN_PASSWORD_LENGTH = 8;
   const [newUser, setNewUser] = useState<{ name: string; email: string; username: string; role: UserRole; regionCode: string; password: string }>(
     () => ({ name: '', email: '', username: '', role: 'GUEST', regionCode: '', password: '' })
   );
 
   const createUser = async () => {
+    if (!newUser.password.trim() || newUser.password.trim().length < MIN_PASSWORD_LENGTH) {
+      await Swal.fire({ icon: 'warning', title: 'Password Required', text: `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`, confirmButtonColor: '#6366F1' });
+      return;
+    }
     setBusy(true);
     try {
       await apiFetch('/admin/users', {
@@ -86,7 +91,7 @@ const Admin: React.FC<AdminProps> = ({ user, permitTypes, statuses, commodities,
           username: newUser.username,
           role: newUser.role,
           regionCode: newUser.role === 'REGIONAL_ECONOMIST' ? (newUser.regionCode || null) : null,
-          password: newUser.password || undefined
+          password: newUser.password
         })
       });
       setNewUser({ name: '', email: '', username: '', role: 'GUEST', regionCode: '', password: '' });
@@ -116,13 +121,13 @@ const Admin: React.FC<AdminProps> = ({ user, permitTypes, statuses, commodities,
 
   const deactivateUser = async (id: string) => {
     const result = await Swal.fire({
-      title: 'Deactivate User?',
+      title: 'Delete User?',
       text: 'This will deactivate the user account.',
       icon: 'warning',
       showCancelButton: true,
       confirmButtonColor: '#EF4444',
       cancelButtonColor: '#94A3B8',
-      confirmButtonText: 'Deactivate'
+      confirmButtonText: 'Delete'
     });
     if (!result.isConfirmed) return;
     setBusy(true);
@@ -131,6 +136,61 @@ const Admin: React.FC<AdminProps> = ({ user, permitTypes, statuses, commodities,
       await loadAdminData();
     } catch (e: any) {
       await Swal.fire({ icon: 'error', title: 'Error', text: e?.message ?? 'Failed', confirmButtonColor: '#6366F1' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // -------------------- EDIT USER MODAL --------------------
+  const [editUserModal, setEditUserModal] = useState<{
+    id: string;
+    name: string;
+    email: string;
+    username: string;
+    role: UserRole;
+    regionCode: string;
+    password: string;
+  } | null>(null);
+
+  const openEditUser = (u: AdminUserRow) => {
+    setEditUserModal({
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      username: u.username,
+      role: u.role,
+      regionCode: u.regionCode ?? '',
+      password: ''
+    });
+  };
+
+  const saveEditUser = async () => {
+    if (!editUserModal) return;
+    setBusy(true);
+    try {
+      const patch: Record<string, unknown> = {
+        name: editUserModal.name,
+        email: editUserModal.email,
+        username: editUserModal.username,
+        role: editUserModal.role,
+        regionCode: editUserModal.role === 'REGIONAL_ECONOMIST' ? (editUserModal.regionCode || null) : null
+      };
+      if (editUserModal.password.trim()) {
+        if (editUserModal.password.trim().length < MIN_PASSWORD_LENGTH) {
+          await Swal.fire({ icon: 'warning', title: 'Password Too Short', text: `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`, confirmButtonColor: '#6366F1' });
+          return;
+        }
+        patch.password = editUserModal.password.trim();
+      }
+      await apiFetch(`/admin/users/${editUserModal.id}`, {
+        method: 'PUT',
+        body: JSON.stringify(patch)
+      });
+      setEditUserModal(null);
+      await loadAdminData();
+      await Swal.fire({ icon: 'success', title: 'User Updated', text: 'User updated successfully.', confirmButtonColor: '#6366F1' });
+    } catch (e: any) {
+      await Swal.fire({ icon: 'error', title: 'Error', text: e?.message ?? 'Update failed', confirmButtonColor: '#6366F1' });
     } finally {
       setBusy(false);
     }
@@ -667,7 +727,7 @@ const Admin: React.FC<AdminProps> = ({ user, permitTypes, statuses, commodities,
               </select>
               <input
                 className="p-2.5 border border-slate-200 rounded-lg"
-                placeholder="Password (optional)"
+                placeholder="Password (required)"
                 type="password"
                 value={newUser.password}
                 onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
@@ -693,7 +753,7 @@ const Admin: React.FC<AdminProps> = ({ user, permitTypes, statuses, commodities,
                     <th className="text-left p-3 font-semibold text-slate-600">Name</th>
                     <th className="text-left p-3 font-semibold text-slate-600">Username</th>
                     <th className="text-left p-3 font-semibold text-slate-600">Role</th>
-                    <th className="text-left p-3 font-semibold text-slate-600">Region Code</th>
+                    <th className="text-left p-3 font-semibold text-slate-600">Region</th>
                     <th className="text-left p-3 font-semibold text-slate-600">Status</th>
                     <th className="text-left p-3 font-semibold text-slate-600">Actions</th>
                   </tr>
@@ -706,47 +766,36 @@ const Admin: React.FC<AdminProps> = ({ user, permitTypes, statuses, commodities,
                         <div className="text-xs text-slate-500">{u.email}</div>
                       </td>
                       <td className="p-3 font-mono text-xs">{u.username}</td>
-                      <td className="p-3">
-                        <select
-                          className="p-2 border border-slate-200 rounded-lg"
-                          value={u.role}
-                          onChange={(e) => updateUser(u.id, { role: e.target.value as UserRole })}
-                        >
-                          {USER_ROLES.map((r) => (
-                            <option key={r} value={r}>
-                              {r}
-                            </option>
-                          ))}
-                        </select>
+                      <td className="p-3 text-sm">{u.role}</td>
+                      <td className="p-3 text-sm">
+                        {u.role === 'REGIONAL_ECONOMIST' && u.regionCode
+                          ? (psgcRegions.find((r) => r.code === u.regionCode)?.name ?? u.regionCode)
+                          : <span className="text-slate-400">—</span>}
                       </td>
                       <td className="p-3">
-                        <select
-                          className="p-2 border border-slate-200 rounded-lg"
-                          value={u.regionCode ?? ''}
-                          onChange={(e) => updateUser(u.id, { regionCode: e.target.value || null })}
-                          disabled={u.role !== 'REGIONAL_ECONOMIST'}
-                        >
-                          <option value="">— none —</option>
-                          {psgcRegions.map((r) => (
-                            <option key={r.code} value={r.code}>
-                              {r.name}
-                            </option>
-                          ))}
-                        </select>
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${u.isActive ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+                          {u.isActive ? 'Active' : 'Inactive'}
+                        </span>
                       </td>
-                      <td className="p-3">{u.isActive ? 'Active' : 'Inactive'}</td>
                       <td className="p-3">
-                        {u.isActive ? (
+                        <div className="flex items-center gap-2">
                           <button
                             disabled={busy}
-                            className="inline-flex items-center gap-2 px-3 py-2 text-xs font-semibold bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
-                            onClick={() => deactivateUser(u.id)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                            onClick={() => openEditUser(u)}
                           >
-                            <Trash2 size={14} /> Deactivate
+                            <Pencil size={13} /> Edit
                           </button>
-                        ) : (
-                          <span className="text-xs text-slate-400">—</span>
-                        )}
+                          {u.isActive && (
+                            <button
+                              disabled={busy}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+                              onClick={() => deactivateUser(u.id)}
+                            >
+                              <Trash2 size={13} /> Delete
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -1099,6 +1148,96 @@ const Admin: React.FC<AdminProps> = ({ user, permitTypes, statuses, commodities,
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Edit User Modal */}
+      {editUserModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-2xl shadow-xl border border-slate-200 p-6 w-full max-w-md mx-4">
+            <div className="font-bold text-slate-800 text-lg mb-4">Edit User</div>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Name</label>
+                <input
+                  className="w-full p-2.5 border border-slate-200 rounded-lg text-sm"
+                  placeholder="Name"
+                  value={editUserModal.name}
+                  onChange={(e) => setEditUserModal({ ...editUserModal, name: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Email</label>
+                <input
+                  className="w-full p-2.5 border border-slate-200 rounded-lg text-sm"
+                  placeholder="Email"
+                  type="email"
+                  value={editUserModal.email}
+                  onChange={(e) => setEditUserModal({ ...editUserModal, email: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Username</label>
+                <input
+                  className="w-full p-2.5 border border-slate-200 rounded-lg text-sm"
+                  placeholder="Username"
+                  value={editUserModal.username}
+                  onChange={(e) => setEditUserModal({ ...editUserModal, username: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Role</label>
+                <select
+                  className="w-full p-2.5 border border-slate-200 rounded-lg text-sm"
+                  value={editUserModal.role}
+                  onChange={(e) => setEditUserModal({ ...editUserModal, role: e.target.value as UserRole, regionCode: '' })}
+                >
+                  {USER_ROLES.map((r) => (
+                    <option key={r} value={r}>{r}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Region (for Regional Economist)</label>
+                <select
+                  className="w-full p-2.5 border border-slate-200 rounded-lg text-sm"
+                  value={editUserModal.regionCode}
+                  onChange={(e) => setEditUserModal({ ...editUserModal, regionCode: e.target.value })}
+                  disabled={editUserModal.role !== 'REGIONAL_ECONOMIST'}
+                >
+                  <option value="">— Select Region —</option>
+                  {psgcRegions.map((r) => (
+                    <option key={r.code} value={r.code}>{r.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">New Password (leave blank to keep current)</label>
+                <input
+                  className="w-full p-2.5 border border-slate-200 rounded-lg text-sm"
+                  placeholder="New password (optional)"
+                  type="password"
+                  value={editUserModal.password}
+                  onChange={(e) => setEditUserModal({ ...editUserModal, password: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="mt-5 flex items-center justify-end gap-3">
+              <button
+                className="px-4 py-2 text-sm font-semibold text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200"
+                onClick={() => setEditUserModal(null)}
+              >
+                Cancel
+              </button>
+              <button
+                disabled={busy}
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50"
+                onClick={saveEditUser}
+              >
+                <Pencil size={14} /> Save Changes
+              </button>
+            </div>
           </div>
         </div>
       )}
