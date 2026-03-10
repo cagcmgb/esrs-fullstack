@@ -77,10 +77,14 @@ export async function login(
   usernameOrEmail: string,
   password: string
 ): Promise<{ token: string; user: User }> {
-  return apiFetch('/auth/login', {
+  const result = await apiFetch<{ token: string; user: User }>('/auth/login', {
     method: 'POST',
     body: JSON.stringify({ usernameOrEmail, password })
   });
+  // Always store the token immediately so subsequent apiFetch calls include the
+  // Authorization header even if the caller forgets to call setToken explicitly.
+  setToken(result.token);
+  return result;
 }
 
 export async function getMe(): Promise<User> {

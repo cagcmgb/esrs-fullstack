@@ -403,7 +403,7 @@ contractorsRouter.post('/:id/verify', asyncHandler(async (req, res) => {
     // Use a fallback to regionCode if regionName is somehow empty (defensive guard against
     // legacy data or direct DB writes that left regionName blank, which would otherwise cause
     // a Prisma "Missing required field" 500 error on this upsert).
-    const regionName = contractor.regionName || contractor.regionCode;
+    const regionName = contractor.regionName?.trim() || contractor.regionCode;
     const regionConfig = await prisma.regionConfig.upsert({
         where: { regionCode: contractor.regionCode },
         update: { regionName },
