@@ -30,6 +30,14 @@ const Contractors: React.FC<ContractorsProps> = ({ user, contractors, permitType
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
+  // Local copy of contractors so deleted items can be removed immediately
+  const [localContractors, setLocalContractors] = useState<Contractor[]>(contractors);
+
+  // Keep local list in sync whenever the parent refreshes the prop
+  useEffect(() => {
+    setLocalContractors(contractors);
+  }, [contractors]);
+
   // Location dropdowns (from backend PSGC proxy)
   const [regions, setRegions] = useState<NamedCode[]>([]);
   const [provinces, setProvinces] = useState<NamedCode[]>([]);
@@ -66,12 +74,12 @@ const Contractors: React.FC<ContractorsProps> = ({ user, contractors, permitType
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return contractors;
-    return contractors.filter((c) => {
+    if (!q) return localContractors;
+    return localContractors.filter((c) => {
       const hay = [c.contractorCode, c.name, c.tin, c.regionName, c.provinceName, c.municipalityName, c.operatorName, c.email].join(' ').toLowerCase();
       return hay.includes(q);
     });
-  }, [contractors, search]);
+  }, [localContractors, search]);
 
   // Load regions when the modal opens
   useEffect(() => {
@@ -518,8 +526,9 @@ const Contractors: React.FC<ContractorsProps> = ({ user, contractors, permitType
                             if (!result.isConfirmed) return;
                             try {
                               await apiFetch(`/contractors/${c.id}`, { method: 'DELETE' });
-                              setSuccess('Contractor deleted.');
+                              setLocalContractors((prev) => prev.filter((item) => item.id !== c.id));
                               await onChanged();
+                              setSuccess('Contractor deleted.');
                             } catch (err: any) {
                               await Swal.fire({ icon: 'error', title: 'Error', text: err?.message ?? 'Failed to delete contractor', confirmButtonColor: '#6366F1' });
                             }
