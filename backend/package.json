@@ -9,8 +9,9 @@
     "start": "node dist/server.js",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "db:seed": "tsx prisma/seed.ts",
-    "postinstall": "prisma migrate deploy && npm run db:seed"
+    "db:seed": "node prisma/seed.js",
+    "db:setup": "prisma migrate deploy && node prisma/seed.js",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "@prisma/client": "^6.13.0",

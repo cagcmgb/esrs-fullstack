@@ -4,6 +4,7 @@ import { apiFetch, downloadFile } from '../api';
 import { USER_ROLES } from '../types';
 import { Plus, Trash2, UserCog } from 'lucide-react';
 import { REPORT_TITLES } from '../constants';
+import Swal from 'sweetalert2';
 
 interface AdminProps {
   user: User;
@@ -87,9 +88,9 @@ const Admin: React.FC<AdminProps> = ({ user, permitTypes, statuses, commodities,
       });
       setNewUser({ name: '', email: '', username: '', role: 'GUEST', regionCode: '', password: '' });
       await loadAdminData();
-      alert('User created.');
+      await Swal.fire({ icon: 'success', title: 'User Created', text: 'User created successfully.', confirmButtonColor: '#6366F1' });
     } catch (e: any) {
-      alert(e?.message ?? 'Failed to create user');
+      await Swal.fire({ icon: 'error', title: 'Error', text: e?.message ?? 'Failed to create user', confirmButtonColor: '#6366F1' });
     } finally {
       setBusy(false);
     }
@@ -104,20 +105,29 @@ const Admin: React.FC<AdminProps> = ({ user, permitTypes, statuses, commodities,
       });
       await loadAdminData();
     } catch (e: any) {
-      alert(e?.message ?? 'Update failed');
+      await Swal.fire({ icon: 'error', title: 'Error', text: e?.message ?? 'Update failed', confirmButtonColor: '#6366F1' });
     } finally {
       setBusy(false);
     }
   };
 
   const deactivateUser = async (id: string) => {
-    if (!confirm('Deactivate this user?')) return;
+    const result = await Swal.fire({
+      title: 'Deactivate User?',
+      text: 'This will deactivate the user account.',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#EF4444',
+      cancelButtonColor: '#94A3B8',
+      confirmButtonText: 'Deactivate'
+    });
+    if (!result.isConfirmed) return;
     setBusy(true);
     try {
       await apiFetch(`/admin/users/${id}`, { method: 'DELETE' });
       await loadAdminData();
     } catch (e: any) {
-      alert(e?.message ?? 'Failed');
+      await Swal.fire({ icon: 'error', title: 'Error', text: e?.message ?? 'Failed', confirmButtonColor: '#6366F1' });
     } finally {
       setBusy(false);
     }
@@ -144,13 +154,13 @@ const Admin: React.FC<AdminProps> = ({ user, permitTypes, statuses, commodities,
         `contractor_bulk_template${sample ? '_sample' : ''}.${format}`
       );
     } catch (e: any) {
-      alert(e?.message ?? `Failed to download ${format.toUpperCase()} template`);
+      await Swal.fire({ icon: 'error', title: 'Error', text: e?.message ?? `Failed to download ${format.toUpperCase()} template`, confirmButtonColor: '#6366F1' });
     }
   };
 
   const uploadBulkContractors = async () => {
     if (!bulkFile) {
-      alert('Please choose a CSV or XLSX file first.');
+      await Swal.fire({ icon: 'warning', title: 'No File', text: 'Please choose a CSV or XLSX file first.', confirmButtonColor: '#6366F1' });
       return;
     }
 
@@ -170,18 +180,20 @@ const Admin: React.FC<AdminProps> = ({ user, permitTypes, statuses, commodities,
       await onChanged();
       setBulkFile(null);
 
-      const firstErrors = result.failures.slice(0, 5).map((f) => `Row ${f.rowNumber}: ${f.message}`).join('\n');
-      alert(
-        [
-          `Import complete.`,
-          `Total rows: ${result.totalRows}`,
-          `Created: ${result.createdCount}`,
-          `Failed: ${result.failedCount}`,
-          firstErrors ? `\nFirst errors:\n${firstErrors}` : ''
-        ].join('\n')
-      );
+      const firstErrors = result.failures.slice(0, 5).map((f) => `Row ${f.rowNumber}: ${f.message}`).join('<br>');
+      await Swal.fire({
+        icon: result.failedCount > 0 ? 'warning' : 'success',
+        title: 'Import Complete',
+        html: [
+          `<b>Total rows:</b> ${result.totalRows}`,
+          `<b>Created:</b> ${result.createdCount}`,
+          `<b>Failed:</b> ${result.failedCount}`,
+          firstErrors ? `<br><b>First errors:</b><br>${firstErrors}` : ''
+        ].join('<br>'),
+        confirmButtonColor: '#6366F1'
+      });
     } catch (e: any) {
-      alert(e?.message ?? 'Bulk upload failed');
+      await Swal.fire({ icon: 'error', title: 'Error', text: e?.message ?? 'Bulk upload failed', confirmButtonColor: '#6366F1' });
     } finally {
       setBusy(false);
     }
@@ -194,9 +206,9 @@ const Admin: React.FC<AdminProps> = ({ user, permitTypes, statuses, commodities,
       await apiFetch('/admin/permit-types', { method: 'POST', body: JSON.stringify({ name: newPermitType.trim() }) });
       setNewPermitType('');
       await onChanged();
-      alert('Permit type added.');
+      await Swal.fire({ icon: 'success', title: 'Added', text: 'Permit type added.', confirmButtonColor: '#6366F1' });
     } catch (e: any) {
-      alert(e?.message ?? 'Failed');
+      await Swal.fire({ icon: 'error', title: 'Error', text: e?.message ?? 'Failed', confirmButtonColor: '#6366F1' });
     } finally {
       setBusy(false);
     }
@@ -209,9 +221,9 @@ const Admin: React.FC<AdminProps> = ({ user, permitTypes, statuses, commodities,
       await apiFetch('/admin/statuses', { method: 'POST', body: JSON.stringify({ name: newStatus.trim() }) });
       setNewStatus('');
       await onChanged();
-      alert('Status added.');
+      await Swal.fire({ icon: 'success', title: 'Added', text: 'Status added.', confirmButtonColor: '#6366F1' });
     } catch (e: any) {
-      alert(e?.message ?? 'Failed');
+      await Swal.fire({ icon: 'error', title: 'Error', text: e?.message ?? 'Failed', confirmButtonColor: '#6366F1' });
     } finally {
       setBusy(false);
     }
@@ -224,9 +236,9 @@ const Admin: React.FC<AdminProps> = ({ user, permitTypes, statuses, commodities,
       await apiFetch('/admin/units', { method: 'POST', body: JSON.stringify({ name: newUnit.name.trim(), symbol: newUnit.symbol.trim() || null }) });
       setNewUnit({ name: '', symbol: '' });
       await onChanged();
-      alert('Unit added.');
+      await Swal.fire({ icon: 'success', title: 'Added', text: 'Unit added.', confirmButtonColor: '#6366F1' });
     } catch (e: any) {
-      alert(e?.message ?? 'Failed');
+      await Swal.fire({ icon: 'error', title: 'Error', text: e?.message ?? 'Failed', confirmButtonColor: '#6366F1' });
     } finally {
       setBusy(false);
     }
@@ -248,9 +260,9 @@ const Admin: React.FC<AdminProps> = ({ user, permitTypes, statuses, commodities,
       });
       setNewCommodity({ name: '', mineralType: 'METALLIC', defaultUnitId: units[0]?.id ?? '', formTemplateCode: '', category: '' });
       await onChanged();
-      alert('Commodity added.');
+      await Swal.fire({ icon: 'success', title: 'Added', text: 'Commodity added.', confirmButtonColor: '#6366F1' });
     } catch (e: any) {
-      alert(e?.message ?? 'Failed');
+      await Swal.fire({ icon: 'error', title: 'Error', text: e?.message ?? 'Failed', confirmButtonColor: '#6366F1' });
     } finally {
       setBusy(false);
     }
@@ -263,9 +275,9 @@ const Admin: React.FC<AdminProps> = ({ user, permitTypes, statuses, commodities,
       await apiFetch('/admin/countries', { method: 'POST', body: JSON.stringify({ name: newCountry.trim() }) });
       setNewCountry('');
       await onChanged();
-      alert('Country added.');
+      await Swal.fire({ icon: 'success', title: 'Added', text: 'Country added.', confirmButtonColor: '#6366F1' });
     } catch (e: any) {
-      alert(e?.message ?? 'Failed');
+      await Swal.fire({ icon: 'error', title: 'Error', text: e?.message ?? 'Failed', confirmButtonColor: '#6366F1' });
     } finally {
       setBusy(false);
     }
@@ -273,137 +285,235 @@ const Admin: React.FC<AdminProps> = ({ user, permitTypes, statuses, commodities,
 
   // ---- Edit / Delete pre-select list helpers ----
   const editPermitType = async (id: string, current: string) => {
-    const name = prompt('Edit permit type name', current);
+    const { value: name } = await Swal.fire({
+      title: 'Edit Permit Type',
+      input: 'text',
+      inputValue: current,
+      showCancelButton: true,
+      confirmButtonColor: '#6366F1',
+      cancelButtonColor: '#94A3B8',
+      confirmButtonText: 'Save'
+    });
     if (!name) return;
     setBusy(true);
     try {
       await apiFetch(`/admin/permit-types/${id}`, { method: 'PUT', body: JSON.stringify({ name }) });
       await onChanged();
     } catch (e: any) {
-      alert(e?.message ?? 'Failed');
+      await Swal.fire({ icon: 'error', title: 'Error', text: e?.message ?? 'Failed', confirmButtonColor: '#6366F1' });
     } finally {
       setBusy(false);
     }
   };
 
   const deletePermitType = async (id: string) => {
-    if (!confirm('Delete this permit type?')) return;
+    const result = await Swal.fire({
+      title: 'Delete Permit Type?',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#EF4444',
+      cancelButtonColor: '#94A3B8',
+      confirmButtonText: 'Delete'
+    });
+    if (!result.isConfirmed) return;
     setBusy(true);
     try {
       await apiFetch(`/admin/permit-types/${id}`, { method: 'DELETE' });
       await onChanged();
     } catch (e: any) {
-      alert(e?.message ?? 'Failed');
+      await Swal.fire({ icon: 'error', title: 'Error', text: e?.message ?? 'Failed', confirmButtonColor: '#6366F1' });
     } finally {
       setBusy(false);
     }
   };
 
   const editStatus = async (id: string, current: string) => {
-    const name = prompt('Edit status name', current);
+    const { value: name } = await Swal.fire({
+      title: 'Edit Status',
+      input: 'text',
+      inputValue: current,
+      showCancelButton: true,
+      confirmButtonColor: '#6366F1',
+      cancelButtonColor: '#94A3B8',
+      confirmButtonText: 'Save'
+    });
     if (!name) return;
     setBusy(true);
     try {
       await apiFetch(`/admin/statuses/${id}`, { method: 'PUT', body: JSON.stringify({ name }) });
       await onChanged();
     } catch (e: any) {
-      alert(e?.message ?? 'Failed');
+      await Swal.fire({ icon: 'error', title: 'Error', text: e?.message ?? 'Failed', confirmButtonColor: '#6366F1' });
     } finally {
       setBusy(false);
     }
   };
 
   const deleteStatus = async (id: string) => {
-    if (!confirm('Delete this status?')) return;
+    const result = await Swal.fire({
+      title: 'Delete Status?',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#EF4444',
+      cancelButtonColor: '#94A3B8',
+      confirmButtonText: 'Delete'
+    });
+    if (!result.isConfirmed) return;
     setBusy(true);
     try {
       await apiFetch(`/admin/statuses/${id}`, { method: 'DELETE' });
       await onChanged();
     } catch (e: any) {
-      alert(e?.message ?? 'Failed');
+      await Swal.fire({ icon: 'error', title: 'Error', text: e?.message ?? 'Failed', confirmButtonColor: '#6366F1' });
     } finally {
       setBusy(false);
     }
   };
 
   const editUnit = async (id: string, currentName: string, currentSymbol?: string | null) => {
-    const name = prompt('Edit unit name', currentName);
+    const { value: name } = await Swal.fire({
+      title: 'Edit Unit Name',
+      input: 'text',
+      inputValue: currentName,
+      showCancelButton: true,
+      confirmButtonColor: '#6366F1',
+      cancelButtonColor: '#94A3B8',
+      confirmButtonText: 'Next'
+    });
     if (!name) return;
-    const symbol = prompt('Edit unit symbol', currentSymbol ?? '') ?? '';
+    const { value: symbol, isDismissed: symbolDismissed } = await Swal.fire({
+      title: 'Edit Unit Symbol',
+      input: 'text',
+      inputValue: currentSymbol ?? '',
+      showCancelButton: true,
+      confirmButtonColor: '#6366F1',
+      cancelButtonColor: '#94A3B8',
+      confirmButtonText: 'Save'
+    });
+    if (symbolDismissed) return;
     setBusy(true);
     try {
-      await apiFetch(`/admin/units/${id}`, { method: 'PUT', body: JSON.stringify({ name, symbol: symbol || null }) });
+      await apiFetch(`/admin/units/${id}`, { method: 'PUT', body: JSON.stringify({ name, symbol: (symbol ?? '') || null }) });
       await onChanged();
     } catch (e: any) {
-      alert(e?.message ?? 'Failed');
+      await Swal.fire({ icon: 'error', title: 'Error', text: e?.message ?? 'Failed', confirmButtonColor: '#6366F1' });
     } finally {
       setBusy(false);
     }
   };
 
   const deleteUnit = async (id: string) => {
-    if (!confirm('Delete this unit?')) return;
+    const result = await Swal.fire({
+      title: 'Delete Unit?',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#EF4444',
+      cancelButtonColor: '#94A3B8',
+      confirmButtonText: 'Delete'
+    });
+    if (!result.isConfirmed) return;
     setBusy(true);
     try {
       await apiFetch(`/admin/units/${id}`, { method: 'DELETE' });
       await onChanged();
     } catch (e: any) {
-      alert(e?.message ?? 'Failed');
+      await Swal.fire({ icon: 'error', title: 'Error', text: e?.message ?? 'Failed', confirmButtonColor: '#6366F1' });
     } finally {
       setBusy(false);
     }
   };
 
   const editCommodity = async (id: string, currentName: string) => {
-    const name = prompt('Edit commodity name', currentName);
+    const { value: name } = await Swal.fire({
+      title: 'Edit Commodity Name',
+      input: 'text',
+      inputValue: currentName,
+      showCancelButton: true,
+      confirmButtonColor: '#6366F1',
+      cancelButtonColor: '#94A3B8',
+      confirmButtonText: 'Next'
+    });
     if (!name) return;
-    const category = prompt('Edit commodity category (optional)', '') ?? '';
+    const { value: category, isDismissed: catDismissed } = await Swal.fire({
+      title: 'Edit Category (optional)',
+      input: 'text',
+      inputValue: '',
+      showCancelButton: true,
+      confirmButtonColor: '#6366F1',
+      cancelButtonColor: '#94A3B8',
+      confirmButtonText: 'Save'
+    });
+    if (catDismissed) return;
     setBusy(true);
     try {
-      await apiFetch(`/admin/commodities/${id}`, { method: 'PUT', body: JSON.stringify({ name, category: category.trim() || null }) });
+      await apiFetch(`/admin/commodities/${id}`, { method: 'PUT', body: JSON.stringify({ name, category: (category ?? '').trim() || null }) });
       await onChanged();
     } catch (e: any) {
-      alert(e?.message ?? 'Failed');
+      await Swal.fire({ icon: 'error', title: 'Error', text: e?.message ?? 'Failed', confirmButtonColor: '#6366F1' });
     } finally {
       setBusy(false);
     }
   };
 
   const deleteCommodity = async (id: string) => {
-    if (!confirm('Delete this commodity?')) return;
+    const result = await Swal.fire({
+      title: 'Delete Commodity?',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#EF4444',
+      cancelButtonColor: '#94A3B8',
+      confirmButtonText: 'Delete'
+    });
+    if (!result.isConfirmed) return;
     setBusy(true);
     try {
       await apiFetch(`/admin/commodities/${id}`, { method: 'DELETE' });
       await onChanged();
     } catch (e: any) {
-      alert(e?.message ?? 'Failed');
+      await Swal.fire({ icon: 'error', title: 'Error', text: e?.message ?? 'Failed', confirmButtonColor: '#6366F1' });
     } finally {
       setBusy(false);
     }
   };
 
   const editCountry = async (id: string, currentName: string) => {
-    const name = prompt('Edit country name', currentName);
+    const { value: name } = await Swal.fire({
+      title: 'Edit Country Name',
+      input: 'text',
+      inputValue: currentName,
+      showCancelButton: true,
+      confirmButtonColor: '#6366F1',
+      cancelButtonColor: '#94A3B8',
+      confirmButtonText: 'Save'
+    });
     if (!name) return;
     setBusy(true);
     try {
       await apiFetch(`/admin/countries/${id}`, { method: 'PUT', body: JSON.stringify({ name }) });
       await onChanged();
     } catch (e: any) {
-      alert(e?.message ?? 'Failed');
+      await Swal.fire({ icon: 'error', title: 'Error', text: e?.message ?? 'Failed', confirmButtonColor: '#6366F1' });
     } finally {
       setBusy(false);
     }
   };
 
   const deleteCountry = async (id: string) => {
-    if (!confirm('Delete this country?')) return;
+    const result = await Swal.fire({
+      title: 'Delete Country?',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#EF4444',
+      cancelButtonColor: '#94A3B8',
+      confirmButtonText: 'Delete'
+    });
+    if (!result.isConfirmed) return;
     setBusy(true);
     try {
       await apiFetch(`/admin/countries/${id}`, { method: 'DELETE' });
       await onChanged();
     } catch (e: any) {
-      alert(e?.message ?? 'Failed');
+      await Swal.fire({ icon: 'error', title: 'Error', text: e?.message ?? 'Failed', confirmButtonColor: '#6366F1' });
     } finally {
       setBusy(false);
     }
@@ -434,22 +544,30 @@ const Admin: React.FC<AdminProps> = ({ user, permitTypes, statuses, commodities,
         body: JSON.stringify({ role: newPermRole, reportType: newPermType, canView: newPermCanView })
       });
       await loadAdminData();
-      alert('Permission saved.');
+      await Swal.fire({ icon: 'success', title: 'Saved', text: 'Permission saved.', confirmButtonColor: '#6366F1' });
     } catch (e: any) {
-      alert(e?.message ?? 'Failed');
+      await Swal.fire({ icon: 'error', title: 'Error', text: e?.message ?? 'Failed', confirmButtonColor: '#6366F1' });
     } finally {
       setBusy(false);
     }
   };
 
   const deletePerm = async (role: string, reportType: string) => {
-    if (!confirm('Delete this permission entry?')) return;
+    const result = await Swal.fire({
+      title: 'Delete Permission?',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#EF4444',
+      cancelButtonColor: '#94A3B8',
+      confirmButtonText: 'Delete'
+    });
+    if (!result.isConfirmed) return;
     setBusy(true);
     try {
       await apiFetch(`/admin/report-permissions/${role}/${reportType}`, { method: 'DELETE' });
       await loadAdminData();
     } catch (e: any) {
-      alert(e?.message ?? 'Failed');
+      await Swal.fire({ icon: 'error', title: 'Error', text: e?.message ?? 'Failed', confirmButtonColor: '#6366F1' });
     } finally {
       setBusy(false);
     }
@@ -464,7 +582,7 @@ const Admin: React.FC<AdminProps> = ({ user, permitTypes, statuses, commodities,
       });
       await loadAdminData();
     } catch (e: any) {
-      alert(e?.message ?? 'Failed');
+      await Swal.fire({ icon: 'error', title: 'Error', text: e?.message ?? 'Failed', confirmButtonColor: '#6366F1' });
     } finally {
       setBusy(false);
     }
@@ -480,7 +598,7 @@ const Admin: React.FC<AdminProps> = ({ user, permitTypes, statuses, commodities,
       });
       await loadAdminData();
     } catch (e: any) {
-      alert(e?.message ?? 'Failed');
+      await Swal.fire({ icon: 'error', title: 'Error', text: e?.message ?? 'Failed', confirmButtonColor: '#6366F1' });
     } finally {
       setBusy(false);
     }
@@ -930,13 +1048,21 @@ const Admin: React.FC<AdminProps> = ({ user, permitTypes, statuses, commodities,
                         className="ml-2 px-3 py-2 rounded-xl bg-red-600 text-white font-semibold hover:bg-red-700"
                         disabled={busy}
                         onClick={async () => {
-                          if (!confirm('Delete this region config?')) return;
+                          const result = await Swal.fire({
+                            title: 'Delete Region Config?',
+                            icon: 'warning',
+                            showCancelButton: true,
+                            confirmButtonColor: '#EF4444',
+                            cancelButtonColor: '#94A3B8',
+                            confirmButtonText: 'Delete'
+                          });
+                          if (!result.isConfirmed) return;
                           setBusy(true);
                           try {
                             await apiFetch(`/admin/regions/${r.regionCode}`, { method: 'DELETE' });
                             await loadAdminData();
                           } catch (e: any) {
-                            alert(e?.message ?? 'Failed');
+                            await Swal.fire({ icon: 'error', title: 'Error', text: e?.message ?? 'Failed', confirmButtonColor: '#6366F1' });
                           } finally {
                             setBusy(false);
                           }
