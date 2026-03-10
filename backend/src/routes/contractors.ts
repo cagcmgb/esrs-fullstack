@@ -457,14 +457,18 @@ contractorsRouter.post(
       return res.json(contractor);
     }
 
-    // Get or create region config
+    // Get or create region config.
+    // Use a fallback to regionCode if regionName is somehow empty (defensive guard against
+    // legacy data or direct DB writes that left regionName blank, which would otherwise cause
+    // a Prisma "Missing required field" 500 error on this upsert).
+    const regionName = contractor.regionName?.trim() || contractor.regionCode;
     const regionConfig = await prisma.regionConfig.upsert({
       where: { regionCode: contractor.regionCode },
-      update: {},
+      update: { regionName },
       create: {
         regionCode: contractor.regionCode,
-        regionName: contractor.regionName,
-        idPrefix: defaultIdPrefix(contractor.regionName),
+        regionName,
+        idPrefix: defaultIdPrefix(regionName),
         nextSequence: 1
       }
     });
