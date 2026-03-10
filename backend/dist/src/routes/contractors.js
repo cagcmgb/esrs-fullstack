@@ -96,6 +96,11 @@ const createSchema = z.object({
     commodityIds: z.array(z.string().min(1)).min(1),
     permits: z.array(permitSchema).optional().default([])
 });
+const toUpperTrim = (value) => {
+    if (value === null || value === undefined)
+        return undefined;
+    return value.trim().toUpperCase();
+};
 contractorsRouter.post('/', asyncHandler(async (req, res) => {
     if (!req.user)
         throw unauthorized();
@@ -109,27 +114,45 @@ contractorsRouter.post('/', asyncHandler(async (req, res) => {
         }
     }
     const body = createSchema.parse(req.body);
+    const normalized = {
+        ...body,
+        name: toUpperTrim(body.name) ?? body.name,
+        tin: toUpperTrim(body.tin) ?? body.tin,
+        operatorName: toUpperTrim(body.operatorName) ?? body.operatorName,
+        contactNo: toUpperTrim(body.contactNo) ?? body.contactNo,
+        email: toUpperTrim(body.email) ?? body.email,
+        regionCode: toUpperTrim(body.regionCode) ?? body.regionCode,
+        regionName: toUpperTrim(body.regionName) ?? body.regionName,
+        provinceCode: toUpperTrim(body.provinceCode) ?? body.provinceCode,
+        provinceName: toUpperTrim(body.provinceName) ?? body.provinceName,
+        municipalityCode: toUpperTrim(body.municipalityCode) ?? body.municipalityCode,
+        municipalityName: toUpperTrim(body.municipalityName) ?? body.municipalityName,
+        permits: body.permits.map((p) => ({
+            ...p,
+            permitNumber: toUpperTrim(p.permitNumber) ?? p.permitNumber
+        }))
+    };
     const contractor = await prisma.contractor.create({
         data: {
-            name: body.name,
-            tin: body.tin,
-            operatorName: body.operatorName,
-            contactNo: body.contactNo,
-            email: body.email,
-            regionCode: body.regionCode,
-            regionName: body.regionName,
-            provinceCode: body.provinceCode ?? null,
-            provinceName: body.provinceName,
-            municipalityCode: body.municipalityCode ?? null,
-            municipalityName: body.municipalityName,
-            areaHectare: body.areaHectare,
-            statusId: body.statusId,
+            name: normalized.name,
+            tin: normalized.tin,
+            operatorName: normalized.operatorName,
+            contactNo: normalized.contactNo,
+            email: normalized.email,
+            regionCode: normalized.regionCode,
+            regionName: normalized.regionName,
+            provinceCode: normalized.provinceCode ?? null,
+            provinceName: normalized.provinceName,
+            municipalityCode: normalized.municipalityCode ?? null,
+            municipalityName: normalized.municipalityName,
+            areaHectare: normalized.areaHectare,
+            statusId: normalized.statusId,
             createdById: req.user.id,
             contractorCommodities: {
-                create: body.commodityIds.map((commodityId) => ({ commodityId }))
+                create: normalized.commodityIds.map((commodityId) => ({ commodityId }))
             },
             permits: {
-                create: body.permits.map((p) => ({
+                create: normalized.permits.map((p) => ({
                     permitTypeId: p.permitTypeId,
                     permitNumber: p.permitNumber,
                     dateApproved: p.dateApproved ? new Date(p.dateApproved) : null,
@@ -198,8 +221,26 @@ contractorsRouter.put('/:id', asyncHandler(async (req, res) => {
         throw forbidden('You can only edit contractors in your region');
     }
     const body = updateSchema.parse(req.body);
+    const normalized = {
+        ...body,
+        name: toUpperTrim(body.name),
+        tin: toUpperTrim(body.tin),
+        operatorName: toUpperTrim(body.operatorName),
+        contactNo: toUpperTrim(body.contactNo),
+        email: toUpperTrim(body.email),
+        regionCode: toUpperTrim(body.regionCode),
+        regionName: toUpperTrim(body.regionName),
+        provinceCode: toUpperTrim(body.provinceCode),
+        provinceName: toUpperTrim(body.provinceName),
+        municipalityCode: toUpperTrim(body.municipalityCode),
+        municipalityName: toUpperTrim(body.municipalityName),
+        permits: body.permits?.map((p) => ({
+            ...p,
+            permitNumber: toUpperTrim(p.permitNumber) ?? p.permitNumber
+        }))
+    };
     // Split nested collections vs scalar fields.
-    const { commodityIds, permits, ...scalar } = body;
+    const { commodityIds, permits, statusId, ...scalar } = normalized;
     // If commodityIds present, replace join table
     const commodityUpdate = commodityIds
         ? {
@@ -232,6 +273,7 @@ contractorsRouter.put('/:id', asyncHandler(async (req, res) => {
         where: { id: req.params.id },
         data: {
             ...scalar,
+            ...(statusId ? { status: { connect: { id: statusId } } } : {}),
             provinceCode: scalar.provinceCode ?? undefined,
             municipalityCode: scalar.municipalityCode ?? undefined,
             contractorCommodities: commodityUpdate,
@@ -262,21 +304,16 @@ contractorsRouter.post('/:id/documents', upload.any(), asyncHandler(async (req, 
     const contractor = await prisma.contractor.findUnique({ where: { id: req.params.id } });
     if (!contractor)
         throw notFound('Contractor not found');
-    const fieldTypeMap = {
-        businessPermit: 'BUSINESS_PERMIT',
-        safetyCertification: 'SAFETY_CERTIFICATION',
-        insuranceDocument: 'INSURANCE_DOCUMENT',
-        complianceCertificate: 'COMPLIANCE_CERTIFICATE'
-    };
     const created = [];
     const files = req.files || [];
+    const allowedFieldNames = new Set(['requiredDocuments', 'businessPermit', 'safetyCertification', 'insuranceDocument', 'complianceCertificate']);
     for (const f of files) {
-        // attempt to infer type from fieldname
-        const type = fieldTypeMap[f.fieldname] ?? 'COMPLIANCE_CERTIFICATE';
+        if (!allowedFieldNames.has(f.fieldname))
+            continue;
         const record = await prisma.contractorDocument.create({
             data: {
                 contractorId: contractor.id,
-                type,
+                type: 'COMPLIANCE_CERTIFICATE',
                 originalName: f.originalname,
                 mimeType: f.mimetype,
                 fileName: f.filename,

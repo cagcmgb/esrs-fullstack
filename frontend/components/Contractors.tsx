@@ -3,6 +3,7 @@ import type { CityMunicipality, Commodity, Contractor, ContractorStatus, NamedCo
 import { apiFetch } from '../api';
 import SuccessToast from './SuccessToast';
 import { CheckCircle2, Eye, Pencil, Plus, Search, X } from 'lucide-react';
+import Swal from 'sweetalert2';
 
 interface ContractorsProps {
   user: User;
@@ -178,7 +179,12 @@ const Contractors: React.FC<ContractorsProps> = ({ user, contractors, permitType
   const openEdit = async (c: Contractor) => {
     const full = await apiFetch<Contractor>(`/contractors/${c.id}`);
     if (full.isVerified) {
-      alert('Verified contractors cannot be edited. Unverify first (Central Office/Admin).');
+      await Swal.fire({
+        icon: 'warning',
+        title: 'Cannot Edit',
+        text: 'Verified contractors cannot be edited. Unverify first (Central Office/Admin).',
+        confirmButtonColor: '#6366F1'
+      });
       return;
     }
 
@@ -353,22 +359,42 @@ const Contractors: React.FC<ContractorsProps> = ({ user, contractors, permitType
 
   const handleVerify = async (contractorId: string) => {
     if (!canVerify) return;
+    const result = await Swal.fire({
+      title: 'Verify Contractor?',
+      text: 'This will assign a Contractor ID and mark the contractor as verified.',
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonColor: '#10B981',
+      cancelButtonColor: '#94A3B8',
+      confirmButtonText: 'Verify'
+    });
+    if (!result.isConfirmed) return;
     try {
       await apiFetch(`/contractors/${contractorId}/verify`, { method: 'POST' });
       await onChanged();
+      await Swal.fire({ icon: 'success', title: 'Verified', text: 'Contractor has been verified.', confirmButtonColor: '#6366F1' });
     } catch (err: any) {
-      alert(err?.message ?? 'Failed to verify contractor');
+      await Swal.fire({ icon: 'error', title: 'Error', text: err?.message ?? 'Failed to verify contractor', confirmButtonColor: '#6366F1' });
     }
   };
 
   const handleUnverify = async (contractorId: string) => {
     if (!canVerify) return;
-    if (!confirm('Unverify this contractor? This will remove the Contractor ID.')) return;
+    const result = await Swal.fire({
+      title: 'Unverify Contractor?',
+      text: 'This will remove the Contractor ID.',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#F59E0B',
+      cancelButtonColor: '#94A3B8',
+      confirmButtonText: 'Unverify'
+    });
+    if (!result.isConfirmed) return;
     try {
       await apiFetch(`/contractors/${contractorId}/unverify`, { method: 'POST' });
       await onChanged();
     } catch (err: any) {
-      alert(err?.message ?? 'Failed to unverify contractor');
+      await Swal.fire({ icon: 'error', title: 'Error', text: err?.message ?? 'Failed to unverify contractor', confirmButtonColor: '#6366F1' });
     }
   };
 
@@ -480,13 +506,22 @@ const Contractors: React.FC<ContractorsProps> = ({ user, contractors, permitType
                       {canCreate && !c.isVerified && (user.role === 'ADMIN' || user.role === 'REGIONAL_ECONOMIST') && (
                         <button
                           onClick={async () => {
-                            if (!confirm('Delete this contractor? This will permanently remove the contractor and related data.')) return;
+                            const result = await Swal.fire({
+                              title: 'Delete Contractor?',
+                              text: 'This will permanently remove the contractor and all related data.',
+                              icon: 'warning',
+                              showCancelButton: true,
+                              confirmButtonColor: '#EF4444',
+                              cancelButtonColor: '#94A3B8',
+                              confirmButtonText: 'Delete'
+                            });
+                            if (!result.isConfirmed) return;
                             try {
                               await apiFetch(`/contractors/${c.id}`, { method: 'DELETE' });
                               setSuccess('Contractor deleted.');
                               await onChanged();
                             } catch (err: any) {
-                              alert(err?.message ?? 'Failed to delete contractor');
+                              await Swal.fire({ icon: 'error', title: 'Error', text: err?.message ?? 'Failed to delete contractor', confirmButtonColor: '#6366F1' });
                             }
                           }}
                           className="px-3 py-1.5 text-xs font-semibold bg-red-600 text-white rounded-lg hover:bg-red-700"
