@@ -40,6 +40,7 @@ const Admin: React.FC<AdminProps> = ({ user, permitTypes, statuses, commodities,
   const [users, setUsers] = useState<AdminUserRow[]>([]);
   const [permissions, setPermissions] = useState<ReportPermission[]>([]);
   const [regions, setRegions] = useState<RegionConfig[]>([]);
+  const [psgcRegions, setPsgcRegions] = useState<{ name: string; code: string }[]>([]);
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -47,14 +48,16 @@ const Admin: React.FC<AdminProps> = ({ user, permitTypes, statuses, commodities,
   const loadAdminData = async () => {
     setError('');
     try {
-      const [u, p, r] = await Promise.all([
+      const [u, p, r, pr] = await Promise.all([
         apiFetch<AdminUserRow[]>('/admin/users'),
         apiFetch<ReportPermission[]>('/admin/report-permissions'),
-        apiFetch<RegionConfig[]>('/admin/regions')
+        apiFetch<RegionConfig[]>('/admin/regions'),
+        apiFetch<{ name: string; code: string }[]>('/locations/regions')
       ]);
       setUsers(u);
       setPermissions(p);
       setRegions(r);
+      setPsgcRegions(pr);
     } catch (e: any) {
       setError(e?.message ?? 'Failed to load admin data');
     }
@@ -649,13 +652,19 @@ const Admin: React.FC<AdminProps> = ({ user, permitTypes, statuses, commodities,
                   </option>
                 ))}
               </select>
-              <input
+              <select
                 className="p-2.5 border border-slate-200 rounded-lg"
-                placeholder="Region Code (for Regional Economist)"
                 value={newUser.regionCode}
                 onChange={(e) => setNewUser({ ...newUser, regionCode: e.target.value })}
                 disabled={newUser.role !== 'REGIONAL_ECONOMIST'}
-              />
+              >
+                <option value="">Region (for Regional Economist)</option>
+                {psgcRegions.map((r) => (
+                  <option key={r.code} value={r.code}>
+                    {r.name}
+                  </option>
+                ))}
+              </select>
               <input
                 className="p-2.5 border border-slate-200 rounded-lg"
                 placeholder="Password (optional)"
@@ -711,12 +720,19 @@ const Admin: React.FC<AdminProps> = ({ user, permitTypes, statuses, commodities,
                         </select>
                       </td>
                       <td className="p-3">
-                        <input
+                        <select
                           className="p-2 border border-slate-200 rounded-lg"
                           value={u.regionCode ?? ''}
-                          onChange={(e) => updateUser(u.id, { regionCode: e.target.value })}
+                          onChange={(e) => updateUser(u.id, { regionCode: e.target.value || null })}
                           disabled={u.role !== 'REGIONAL_ECONOMIST'}
-                        />
+                        >
+                          <option value="">— none —</option>
+                          {psgcRegions.map((r) => (
+                            <option key={r.code} value={r.code}>
+                              {r.name}
+                            </option>
+                          ))}
+                        </select>
                       </td>
                       <td className="p-3">{u.isActive ? 'Active' : 'Inactive'}</td>
                       <td className="p-3">
