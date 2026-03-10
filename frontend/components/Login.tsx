@@ -50,7 +50,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const quickRoles: Array<{ label: string; user: string; role: UserRole | string; icon: any; color: string }> = [
     { role: 'ADMIN', label: 'Admin', user: 'admin', icon: ShieldCheck, color: 'bg-indigo-600' },
     { role: 'CENTRAL_OFFICE', label: 'Central', user: 'central', icon: Building2, color: 'bg-blue-600' },
-    { role: 'REGIONAL_ECONOMIST', label: 'Regional', user: 'regional', icon: Globe, color: 'bg-emerald-600' },
+    { role: 'REGIONAL_ECONOMIST', label: 'Regional', user: 'region2', icon: Globe, color: 'bg-emerald-600' },
     { role: 'GUEST', label: 'Guest', user: 'guest', icon: UserIcon, color: 'bg-slate-600' }
   ];
 

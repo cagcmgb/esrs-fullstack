@@ -132,7 +132,7 @@ async function upsertUsers() {
     {
       name: 'Ricardo Reyes',
       email: 'region2@mgb.gov.ph',
-      username: 'regional',
+      username: 'region2',
       role: UserRole.REGIONAL_ECONOMIST,
       // PSGC Region II (Cagayan Valley) code (used for filtering). If you prefer another region, edit after seeding.
       regionCode: '0200000000'
