@@ -12,7 +12,7 @@ import path from 'path';
 export const contractorsRouter = Router();
 
 contractorsRouter.use(requireAuth);
-contractorsRouter.use(requireRole([UserRole.ADMIN, UserRole.CENTRAL_OFFICE, UserRole.CENTRAL_DATA_ENTRY, UserRole.REGIONAL_ECONOMIST]));
+contractorsRouter.use(requireRole([UserRole.ADMIN, UserRole.CENTRAL_OFFICE, UserRole.REGIONAL_ECONOMIST]));
 
 contractorsRouter.get(
   '/',

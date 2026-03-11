@@ -180,7 +180,6 @@ async function upsertReportPermissions() {
   const roles: UserRole[] = [
     UserRole.ADMIN,
     UserRole.CENTRAL_OFFICE,
-    UserRole.CENTRAL_DATA_ENTRY,
     UserRole.REGIONAL_ECONOMIST,
     UserRole.GUEST
   ];

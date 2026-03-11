@@ -1,2 +1,0 @@
--- AlterEnum
-ALTER TYPE "UserRole" ADD VALUE 'CENTRAL_DATA_ENTRY';

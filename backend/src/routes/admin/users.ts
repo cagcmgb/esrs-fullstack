@@ -32,7 +32,7 @@ const createSchema = z.object({
   name: z.string().min(1),
   email: z.string().email(),
   username: z.string().min(2),
-  role: z.enum(['ADMIN', 'CENTRAL_OFFICE', 'CENTRAL_DATA_ENTRY', 'REGIONAL_ECONOMIST', 'GUEST']),
+  role: z.enum(['ADMIN', 'CENTRAL_OFFICE', 'REGIONAL_ECONOMIST', 'GUEST']),
   regionCode: z.string().optional().nullable(),
   password: z.string().min(8)
 });
@@ -72,7 +72,7 @@ const updateSchema = z.object({
   name: z.string().min(1).optional(),
   email: z.string().email().optional(),
   username: z.string().min(2).optional(),
-  role: z.enum(['ADMIN', 'CENTRAL_OFFICE', 'CENTRAL_DATA_ENTRY', 'REGIONAL_ECONOMIST', 'GUEST']).optional(),
+  role: z.enum(['ADMIN', 'CENTRAL_OFFICE', 'REGIONAL_ECONOMIST', 'GUEST']).optional(),
   regionCode: z.string().optional().nullable(),
   isActive: z.boolean().optional(),
   password: z.string().min(8).optional()
