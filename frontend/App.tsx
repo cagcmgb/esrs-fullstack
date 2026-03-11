@@ -135,7 +135,7 @@ const App: React.FC = () => {
         />
       )}
 
-      {activeTab === 'Data Entry' && (user.role === 'ADMIN' || user.role === 'REGIONAL_ECONOMIST') && (
+      {activeTab === 'Data Entry' && (user.role === 'ADMIN' || user.role === 'CENTRAL_OFFICE' || user.role === 'REGIONAL_ECONOMIST') && (
         <DataEntry
           user={user}
           contractors={contractors.filter((c) => c.isVerified)}

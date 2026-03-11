@@ -73,17 +73,13 @@ submissionsRouter.get(
     '/:id',
     asyncHandler(async (req, res) => {
       if (!req.user) throw unauthorized();
-      // Admin and Central Office can delete (Central Office limited to VERIFIED submissions)
+      // Admin and Central Office can delete any submission
       if (!(req.user.role === UserRole.ADMIN || req.user.role === UserRole.CENTRAL_OFFICE)) {
         throw forbidden('Only Admin/Central Office can delete submissions');
       }
 
       const existing = await prisma.submission.findUnique({ where: { id: req.params.id } });
       if (!existing) throw notFound('Submission not found');
-
-      if (req.user.role === UserRole.CENTRAL_OFFICE && existing.status !== SubmissionStatus.VERIFIED) {
-        throw forbidden('Central Office can only delete VERIFIED submissions');
-      }
 
       await prisma.submission.delete({ where: { id: existing.id } });
       res.json({ ok: true });
@@ -148,8 +144,8 @@ submissionsRouter.post(
   '/',
   asyncHandler(async (req, res) => {
     if (!req.user) throw unauthorized();
-    if (!(req.user.role === UserRole.ADMIN || req.user.role === UserRole.REGIONAL_ECONOMIST)) {
-      throw forbidden('Only Regional Economist/Admin can encode data');
+    if (!(req.user.role === UserRole.ADMIN || req.user.role === UserRole.CENTRAL_OFFICE || req.user.role === UserRole.REGIONAL_ECONOMIST)) {
+      throw forbidden('Only Admin/Central Office/Regional Economist can encode data');
     }
 
     const body = createSchema.parse(req.body);
@@ -204,17 +200,11 @@ submissionsRouter.put(
     });
     if (!existing) throw notFound('Submission not found');
 
-    // ADMIN may edit any submission.
-    // CENTRAL_OFFICE may edit VERIFIED submissions (to fix discrepancies after verification).
+    // ADMIN and CENTRAL_OFFICE may edit any submission regardless of status.
     // REGIONAL_ECONOMIST may edit only DRAFT submissions.
     if (req.user.role === UserRole.REGIONAL_ECONOMIST) {
       if (existing.status !== SubmissionStatus.DRAFT) {
         throw badRequest('Only DRAFT submissions can be edited');
-      }
-    }
-    if (req.user.role === UserRole.CENTRAL_OFFICE) {
-      if (existing.status !== SubmissionStatus.VERIFIED) {
-        throw badRequest('Only VERIFIED submissions can be edited by Central Office');
       }
     }
 
@@ -248,7 +238,7 @@ submissionsRouter.post(
   '/:id/submit',
   asyncHandler(async (req, res) => {
     if (!req.user) throw unauthorized();
-    if (!(req.user.role === UserRole.ADMIN || req.user.role === UserRole.REGIONAL_ECONOMIST)) {
+    if (!(req.user.role === UserRole.ADMIN || req.user.role === UserRole.CENTRAL_OFFICE || req.user.role === UserRole.REGIONAL_ECONOMIST)) {
       throw forbidden();
     }
 
