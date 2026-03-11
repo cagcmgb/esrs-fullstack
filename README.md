@@ -13,8 +13,6 @@ It includes:
 - ✅ Report generation to Excel (Operating Mines, Directory, Production, Sales, Export by Country, Employment)
 - ✅ Cascading Region → Province → Municipality via PSGC Cloud
 
-> Note: This is an MVP starter that you can extend to fully mirror every cell/field of each official MGB Excel form.
-
 ## Tech Stack
 
 - Backend: Express, Prisma, JWT Auth, ExcelJS, Multer
@@ -64,23 +62,6 @@ npm run dev
 ```
 
 Frontend runs at `http://localhost:3000` (Vite dev server).
-
-## Default Users (Seed Data)
-
-After `npm run db:seed`, you can log in with:
-
-- Admin
-  - username: `admin`
-  - password: `password`
-- Central Office
-  - username: `central`
-  - password: `password`
-- Regional Economist (Region II)
-  - username: `region2`
-  - password: `password`
-- Guest
-  - username: `guest`
-  - password: `password`
 
 ## Key Workflows
 
@@ -134,23 +115,4 @@ Mineral Economics, Information & Publications Division
 
 ## MGB Form Files
 
-See: `docs/mgb-forms.md`
 
-(Optional) Download them into this repo:
-
-```bash
-chmod +x scripts/download-mgb-forms.sh
-./scripts/download-mgb-forms.sh
-```
-
-## Next Enhancements
-
-- Mirror each MGB Form 29-
-- Add quarterly/annual form templates
-- Add stronger validation rules per commodity
-- Add audit logging + activity trails
-- Add S3/MinIO storage for attachments
-
----
-
-If you want, I can help you extend this MVP into an exact per-commodity form builder (29-01 ... 29-21) with field-level validation and Excel export that matches the official layouts.
