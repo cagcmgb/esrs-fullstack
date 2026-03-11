@@ -148,8 +148,8 @@ submissionsRouter.post(
   '/',
   asyncHandler(async (req, res) => {
     if (!req.user) throw unauthorized();
-    if (!(req.user.role === UserRole.ADMIN || req.user.role === UserRole.REGIONAL_ECONOMIST)) {
-      throw forbidden('Only Regional Economist/Admin can encode data');
+    if (!(req.user.role === UserRole.ADMIN || req.user.role === UserRole.REGIONAL_ECONOMIST || req.user.role === UserRole.CENTRAL_DATA_ENTRY)) {
+      throw forbidden('Only Admin/Regional Economist/Central Data Entry can encode data');
     }
 
     const body = createSchema.parse(req.body);
@@ -194,7 +194,7 @@ submissionsRouter.put(
   '/:id',
   asyncHandler(async (req, res) => {
     if (!req.user) throw unauthorized();
-    if (!(req.user.role === UserRole.ADMIN || req.user.role === UserRole.CENTRAL_OFFICE || req.user.role === UserRole.REGIONAL_ECONOMIST)) {
+    if (!(req.user.role === UserRole.ADMIN || req.user.role === UserRole.CENTRAL_OFFICE || req.user.role === UserRole.CENTRAL_DATA_ENTRY || req.user.role === UserRole.REGIONAL_ECONOMIST)) {
       throw forbidden();
     }
 
@@ -206,8 +206,8 @@ submissionsRouter.put(
 
     // ADMIN may edit any submission.
     // CENTRAL_OFFICE may edit VERIFIED submissions (to fix discrepancies after verification).
-    // REGIONAL_ECONOMIST may edit only DRAFT submissions.
-    if (req.user.role === UserRole.REGIONAL_ECONOMIST) {
+    // REGIONAL_ECONOMIST and CENTRAL_DATA_ENTRY may edit only DRAFT submissions.
+    if (req.user.role === UserRole.REGIONAL_ECONOMIST || req.user.role === UserRole.CENTRAL_DATA_ENTRY) {
       if (existing.status !== SubmissionStatus.DRAFT) {
         throw badRequest('Only DRAFT submissions can be edited');
       }
@@ -248,7 +248,7 @@ submissionsRouter.post(
   '/:id/submit',
   asyncHandler(async (req, res) => {
     if (!req.user) throw unauthorized();
-    if (!(req.user.role === UserRole.ADMIN || req.user.role === UserRole.REGIONAL_ECONOMIST)) {
+    if (!(req.user.role === UserRole.ADMIN || req.user.role === UserRole.REGIONAL_ECONOMIST || req.user.role === UserRole.CENTRAL_DATA_ENTRY)) {
       throw forbidden();
     }
 
@@ -393,8 +393,8 @@ submissionsRouter.delete(
       throw forbidden('You can only delete attachments for your region');
     }
 
-    // Only Admin / Central Office / Regional Economist (region-matched) allowed
-    if (!(req.user.role === UserRole.ADMIN || req.user.role === UserRole.CENTRAL_OFFICE || req.user.role === UserRole.REGIONAL_ECONOMIST)) {
+    // Only Admin / Central Office / Central Data Entry / Regional Economist (region-matched) allowed
+    if (!(req.user.role === UserRole.ADMIN || req.user.role === UserRole.CENTRAL_OFFICE || req.user.role === UserRole.CENTRAL_DATA_ENTRY || req.user.role === UserRole.REGIONAL_ECONOMIST)) {
       throw forbidden();
     }
 

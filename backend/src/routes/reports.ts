@@ -9,7 +9,7 @@ import { createStandardSheet, sendWorkbook } from '../reports/workbook.js';
 export const reportsRouter = Router();
 
 reportsRouter.use(requireAuth);
-reportsRouter.use(requireRole([UserRole.ADMIN, UserRole.CENTRAL_OFFICE, UserRole.REGIONAL_ECONOMIST]));
+reportsRouter.use(requireRole([UserRole.ADMIN, UserRole.CENTRAL_OFFICE, UserRole.CENTRAL_DATA_ENTRY, UserRole.REGIONAL_ECONOMIST]));
 
 async function assertCanViewReport(user: { role: any; id: string }, reportType: ReportType) {
   if (user.role === UserRole.ADMIN) return;

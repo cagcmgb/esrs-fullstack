@@ -14,7 +14,7 @@ reportPermissionsRouter.get(
 );
 
 const schema = z.object({
-  role: z.enum(['ADMIN', 'CENTRAL_OFFICE', 'REGIONAL_ECONOMIST', 'GUEST']),
+  role: z.enum(['ADMIN', 'CENTRAL_OFFICE', 'CENTRAL_DATA_ENTRY', 'REGIONAL_ECONOMIST', 'GUEST']),
   reportType: z.enum(['OPERATING_MINES', 'DIRECTORY', 'PRODUCTION', 'SALES', 'EXPORT_BY_COUNTRY', 'EMPLOYMENT']),
   canView: z.boolean()
 });

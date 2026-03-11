@@ -2,6 +2,7 @@
 export enum UserRole {
 	ADMIN = 'ADMIN',
 	CENTRAL_OFFICE = 'CENTRAL_OFFICE',
+	CENTRAL_DATA_ENTRY = 'CENTRAL_DATA_ENTRY',
 	REGIONAL_ECONOMIST = 'REGIONAL_ECONOMIST',
 	GUEST = 'GUEST'
 }
@@ -9,6 +10,7 @@ export enum UserRole {
 export const USER_ROLES: UserRole[] = [
 	UserRole.ADMIN,
 	UserRole.CENTRAL_OFFICE,
+	UserRole.CENTRAL_DATA_ENTRY,
 	UserRole.REGIONAL_ECONOMIST,
 	UserRole.GUEST
 ];

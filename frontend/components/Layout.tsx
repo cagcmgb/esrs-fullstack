@@ -39,9 +39,9 @@ const Layout: React.FC<LayoutProps> = ({ user, activeTab, setActiveTab, onLogout
 
   const navigation: Array<{ name: string; icon: any; roles: (UserRole | string)[] }> = [
     { name: 'Dashboard', icon: LayoutDashboard, roles: USER_ROLES },
-    { name: 'Contractors', icon: Users, roles: ['ADMIN', 'CENTRAL_OFFICE', 'REGIONAL_ECONOMIST'] },
-    { name: 'Data Entry', icon: FileEdit, roles: ['ADMIN', 'REGIONAL_ECONOMIST'] },
-    { name: 'Reports', icon: BarChart3, roles: ['ADMIN', 'CENTRAL_OFFICE', 'REGIONAL_ECONOMIST'] },
+    { name: 'Contractors', icon: Users, roles: ['ADMIN', 'CENTRAL_OFFICE', 'CENTRAL_DATA_ENTRY', 'REGIONAL_ECONOMIST'] },
+    { name: 'Data Entry', icon: FileEdit, roles: ['ADMIN', 'CENTRAL_DATA_ENTRY', 'REGIONAL_ECONOMIST'] },
+    { name: 'Reports', icon: BarChart3, roles: ['ADMIN', 'CENTRAL_OFFICE', 'CENTRAL_DATA_ENTRY', 'REGIONAL_ECONOMIST'] },
     { name: 'Admin', icon: Settings, roles: ['ADMIN'] }
   ];
 

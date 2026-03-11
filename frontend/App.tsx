@@ -135,7 +135,7 @@ const App: React.FC = () => {
         />
       )}
 
-      {activeTab === 'Data Entry' && (user.role === 'ADMIN' || user.role === 'REGIONAL_ECONOMIST') && (
+      {activeTab === 'Data Entry' && (user.role === 'ADMIN' || user.role === 'REGIONAL_ECONOMIST' || user.role === 'CENTRAL_DATA_ENTRY') && (
         <DataEntry
           user={user}
           contractors={contractors.filter((c) => c.isVerified)}
@@ -149,7 +149,7 @@ const App: React.FC = () => {
         />
       )}
 
-      {activeTab === 'Reports' && (user.role === 'ADMIN' || user.role === 'CENTRAL_OFFICE' || user.role === 'REGIONAL_ECONOMIST') && (
+      {activeTab === 'Reports' && (user.role === 'ADMIN' || user.role === 'CENTRAL_OFFICE' || user.role === 'CENTRAL_DATA_ENTRY' || user.role === 'REGIONAL_ECONOMIST') && (
         <Reports
           user={user}
           reportPermissions={settings.reportPermissions}
