@@ -10,6 +10,8 @@ export const dashboardRouter = Router();
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 /** Submissions in DRAFT status older than this many days are considered late. */
 const LATE_FILING_THRESHOLD_DAYS = 30;
+/** Separator used in the region::contractorId composite lookup key. */
+const REGION_CONTRACTOR_KEY_SEP = '::';
 
 dashboardRouter.get(
   '/summary',
@@ -118,7 +120,7 @@ dashboardRouter.get(
       entry.contractorMap.set(s.contractor.id, s.contractor.name);
 
       // Accumulate per-contractor production value for top-3 ranking
-      const cKey = `${rc}::${s.contractor.id}`;
+      const cKey = `${rc}${REGION_CONTRACTOR_KEY_SEP}${s.contractor.id}`;
       const existing = contractorProductionValue.get(cKey);
       if (existing) {
         existing.value += prodValue;
@@ -141,7 +143,7 @@ dashboardRouter.get(
       const leadingCommodity = Object.entries(e.commodityQty).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'N/A';
       // Top 3 contractors ranked by production value within the region
       const topContractors = Array.from(contractorProductionValue.entries())
-        .filter(([key]) => key.startsWith(`${e.regionCode}::`))
+        .filter(([key]) => key.startsWith(`${e.regionCode}${REGION_CONTRACTOR_KEY_SEP}`))
         .map(([, v]) => v)
         .sort((a, b) => b.value - a.value)
         .slice(0, 3)

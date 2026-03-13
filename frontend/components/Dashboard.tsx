@@ -29,6 +29,7 @@ import {
   X
 } from 'lucide-react';
 import PhilippineMap from './PhilippineMap';
+import { matchesPsgcRegion } from '../utils/regionMatch';
 
 interface DashboardProps {
   contractors: Contractor[];
@@ -40,6 +41,8 @@ const COLORS = ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'
 
 // Placeholder multiplier for excise-tax target until a real annual target is stored in DB
 const TAX_TARGET_MULTIPLIER = 1.5;
+// Production-to-sales ratio above which an inventory build-up alert is raised
+const STOCKPILE_THRESHOLD_RATIO = 1.3;
 
 // Static LME mock prices (in USD/troy oz for gold, USD/t for others)
 const LME_PRICES = [
@@ -97,25 +100,13 @@ const Dashboard: React.FC<DashboardProps> = ({ contractors, summary, onNavigate 
   // When a PSGC code is selected, find the matching RegionalStat
   const selectedStat: RegionalStat | null = useMemo(() => {
     if (!selectedRegionPsgc || !summary?.regionalStats) return null;
-    return (
-      summary.regionalStats.find((s) => {
-        const rc = s.regionCode;
-        if (rc === selectedRegionPsgc) return true;
-        if (rc.length === 10 && selectedRegionPsgc.length === 10 && rc.substring(0, 2) === selectedRegionPsgc.substring(0, 2)) return true;
-        return false;
-      }) ?? null
-    );
+    return summary.regionalStats.find((s) => matchesPsgcRegion(s.regionCode, selectedRegionPsgc)) ?? null;
   }, [selectedRegionPsgc, summary?.regionalStats]);
 
   // Filter contractors by selected region (for donut chart, etc.)
   const filteredContractors = useMemo(() => {
     if (!selectedRegionPsgc) return contractors;
-    return contractors.filter((c) => {
-      const rc = c.regionCode;
-      if (rc === selectedRegionPsgc) return true;
-      if (rc.length === 10 && selectedRegionPsgc.length === 10 && rc.substring(0, 2) === selectedRegionPsgc.substring(0, 2)) return true;
-      return false;
-    });
+    return contractors.filter((c) => matchesPsgcRegion(c.regionCode, selectedRegionPsgc));
   }, [selectedRegionPsgc, contractors]);
 
   const regions = Array.from(new Set(contractors.map((c) => c.regionName)));
@@ -129,7 +120,7 @@ const Dashboard: React.FC<DashboardProps> = ({ contractors, summary, onNavigate 
   // Detect stockpile rising: if production significantly exceeds sales in last 3 months
   const recentTrend = summary?.monthlyTrend?.slice(-3) ?? [];
   const isRisingStockpile = recentTrend.length === 3 &&
-    recentTrend.every((m) => m.productionQty > m.salesQty * 1.3);
+    recentTrend.every((m) => m.productionQty > m.salesQty * STOCKPILE_THRESHOLD_RATIO);
 
   // Report readiness segments (global)
   const byStatus = summary?.submissions?.byStatus ?? {};
