@@ -9,6 +9,7 @@ import { contractorsRouter } from './routes/contractors.js';
 import { submissionsRouter } from './routes/submissions.js';
 import { reportsRouter } from './routes/reports.js';
 import { dashboardRouter } from './routes/dashboard.js';
+import { exchangeRatesRouter } from './routes/exchangeRates.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
 export function createApp() {
@@ -30,6 +31,7 @@ export function createApp() {
   app.use('/api/contractors', contractorsRouter);
   app.use('/api/submissions', submissionsRouter);
   app.use('/api/reports', reportsRouter);
+  app.use('/api/exchange-rates', exchangeRatesRouter);
 
   // Admin
   app.use('/api/admin', adminRouter);

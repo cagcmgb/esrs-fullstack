@@ -24,6 +24,10 @@ type SalesRecord = {
   // UI-friendly field names; backend expects fobValuePhp/fobValueUsd.
   valuePhp: number;
   valueUsd: number;
+  // Exchange rate and excise tax (auto-calculated; encoder can override)
+  exchangeRate: number;
+  exciseTaxRate: number;
+  exciseTaxPayable: number;
 };
 
 const DataEntry: React.FC<DataEntryProps> = ({ user, contractors, commodities, submissions, countries, onChanged }) => {
@@ -58,6 +62,16 @@ const DataEntry: React.FC<DataEntryProps> = ({ user, contractors, commodities, s
   const [success, setSuccess] = useState<string>('');
   const [recentViewSubmission, setRecentViewSubmission] = useState<Submission | null>(null);
 
+  // Exchange rate and excise tax state
+  const [officialExchangeRate, setOfficialExchangeRate] = useState<number | null>(null);
+  const [exchangeRateSource, setExchangeRateSource] = useState<string | null>(null);
+  const [exchangeRateOverrideValue, setExchangeRateOverrideValue] = useState<string>('');
+  const [isExchangeRateOverridden, setIsExchangeRateOverridden] = useState<boolean>(false);
+  const [officialExciseTaxRate, setOfficialExciseTaxRate] = useState<number>(0.04);
+  const [exciseTaxLegalBasis, setExciseTaxLegalBasis] = useState<string>('RA 12253');
+  const [exciseTaxRateOverride, setExciseTaxRateOverride] = useState<string>('');
+  const [isExciseTaxOverridden, setIsExciseTaxOverridden] = useState<boolean>(false);
+
   const popup = Swal.mixin({
     confirmButtonColor: '#6366F1',
     cancelButtonColor: '#94A3B8',
@@ -65,6 +79,35 @@ const DataEntry: React.FC<DataEntryProps> = ({ user, contractors, commodities, s
     showClass: { popup: 'swal2-show' },
     hideClass: { popup: 'swal2-hide' }
   });
+
+  // Fetch official exchange rate and excise tax rate when month/year changes
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchRates = async () => {
+      try {
+        const [rateRes, taxRes] = await Promise.all([
+          apiFetch<{ rate: number | null; source: string | null }>(`/exchange-rates?year=${year}&month=${month}&currencyPair=USD%2FPHP`),
+          apiFetch<{ rate: number; legalBasis: string | null }>(`/exchange-rates/excise-tax?date=${year}-${String(month).padStart(2, '0')}-01`)
+        ]);
+        if (!cancelled) {
+          setOfficialExchangeRate(rateRes.rate);
+          setExchangeRateSource(rateRes.source);
+          setExchangeRateOverrideValue('');
+          setIsExchangeRateOverridden(false);
+          setOfficialExciseTaxRate(taxRes.rate);
+          setExciseTaxLegalBasis(taxRes.legalBasis ?? 'RA 12253');
+          setExciseTaxRateOverride('');
+          setIsExciseTaxOverridden(false);
+        }
+      } catch {
+        // Non-critical; encoder can still manually enter values
+      }
+    };
+
+    fetchRates();
+    return () => { cancelled = true; };
+  }, [year, month]);
 
   const selectedContractor = useMemo(() => contractors.find((c) => c.id === contractorId) ?? null, [contractorId, contractors]);
   const contractorCommodityOptions = useMemo(() => {
@@ -131,7 +174,10 @@ const DataEntry: React.FC<DataEntryProps> = ({ user, contractors, commodities, s
         quantity: Number(r.quantity ?? 0),
         unit: String(r.unit ?? selectedCommodity?.defaultUnit?.name ?? ''),
         valuePhp: Number(r.fobValuePhp ?? r.valuePhp ?? 0),
-        valueUsd: Number(r.fobValueUsd ?? r.valueUsd ?? 0)
+        valueUsd: Number(r.fobValueUsd ?? r.valueUsd ?? 0),
+        exchangeRate: Number(r.exchangeRate ?? 0),
+        exciseTaxRate: Number(r.exciseTaxRate ?? 0),
+        exciseTaxPayable: Number(r.exciseTaxPayable ?? 0)
       }))
     });
 
@@ -153,6 +199,97 @@ const DataEntry: React.FC<DataEntryProps> = ({ user, contractors, commodities, s
         : existingSubmission?.status !== 'SUBMITTED' && existingSubmission?.status !== 'VERIFIED';
 
   const readOnly = existingSubmission ? !canEditThisSubmission : false;
+
+  // Effective exchange rate: encoder override takes precedence over official rate
+  const activeExchangeRate = isExchangeRateOverridden && exchangeRateOverrideValue !== ''
+    ? Number(exchangeRateOverrideValue)
+    : (officialExchangeRate ?? 0);
+
+  // Effective excise tax rate: admin override takes precedence
+  const activeExciseTaxRate = isExciseTaxOverridden && exciseTaxRateOverride !== ''
+    ? Number(exciseTaxRateOverride) / 100
+    : officialExciseTaxRate;
+
+  // Handle encoder overriding exchange rate (captures reason for audit)
+  const handleExchangeRateOverride = async () => {
+    const result = await popup.fire({
+      title: 'Override Exchange Rate',
+      html: `<p class="text-sm text-slate-600 mb-3">Official rate: <strong>₱${officialExchangeRate?.toFixed(4) ?? 'N/A'}</strong></p>
+             <input id="rate-val" class="swal2-input" placeholder="Enter override rate (e.g. 57.50)" type="number" step="0.0001">
+             <input id="rate-reason" class="swal2-input" placeholder="Reason (e.g. contract locked-in rate)">`,
+      showCancelButton: true,
+      confirmButtonText: 'Apply Override',
+      preConfirm: () => {
+        const rateEl = (document.getElementById('rate-val') as HTMLInputElement);
+        const reasonEl = (document.getElementById('rate-reason') as HTMLInputElement);
+        if (!rateEl?.value || !reasonEl?.value) {
+          Swal.showValidationMessage('Both rate and reason are required');
+          return false;
+        }
+        return { rate: rateEl.value, reason: reasonEl.value };
+      }
+    });
+    if (!result.isConfirmed || !result.value) return;
+    setExchangeRateOverrideValue(String(result.value.rate));
+    setIsExchangeRateOverridden(true);
+    // If we have a saved submission, record the override for audit
+    if (currentSubmissionId && officialExchangeRate != null) {
+      try {
+        await apiFetch('/exchange-rates/override', {
+          method: 'POST',
+          body: JSON.stringify({
+            submissionId: currentSubmissionId,
+            currencyPair: 'USD/PHP',
+            officialRate: officialExchangeRate,
+            overrideRate: Number(result.value.rate),
+            reason: result.value.reason
+          })
+        });
+      } catch {
+        // Non-critical audit store failure
+      }
+    }
+  };
+
+  // Handle admin overriding excise tax rate (requires reason)
+  const handleExciseTaxOverride = async () => {
+    const result = await popup.fire({
+      title: 'Edit Excise Tax Rate',
+      html: `<p class="text-sm text-slate-600 mb-3">Official rate: <strong>${(activeExciseTaxRate * 100).toFixed(2)}%</strong> (${exciseTaxLegalBasis})</p>
+             <input id="tax-val" class="swal2-input" placeholder="New rate % (e.g. 3.5)" type="number" step="0.01">
+             <input id="tax-reason" class="swal2-input" placeholder="Reason for Change (e.g. Tax Credit Applied)">`,
+      showCancelButton: true,
+      confirmButtonText: 'Apply Override',
+      preConfirm: () => {
+        const rateEl = (document.getElementById('tax-val') as HTMLInputElement);
+        const reasonEl = (document.getElementById('tax-reason') as HTMLInputElement);
+        if (!rateEl?.value || !reasonEl?.value) {
+          Swal.showValidationMessage('Both rate and reason are required');
+          return false;
+        }
+        return { rate: rateEl.value, reason: reasonEl.value };
+      }
+    });
+    if (!result.isConfirmed || !result.value) return;
+    setExciseTaxRateOverride(String(result.value.rate));
+    setIsExciseTaxOverridden(true);
+    // Record audit trail if submission exists
+    if (currentSubmissionId) {
+      try {
+        await apiFetch('/exchange-rates/excise-tax/override', {
+          method: 'POST',
+          body: JSON.stringify({
+            submissionId: currentSubmissionId,
+            officialRate: activeExciseTaxRate,
+            overrideRate: Number(result.value.rate) / 100,
+            reason: result.value.reason
+          })
+        });
+      } catch {
+        // Non-critical
+      }
+    }
+  };
 
   const upsertSubmission = async () => {
     if (!contractorId || !commodityId) throw new Error('Select a contractor and commodity');
@@ -183,6 +320,8 @@ const DataEntry: React.FC<DataEntryProps> = ({ user, contractors, commodities, s
       administrative: { ...admin, encodedBy: user.name },
       production: productionPayload,
       sales: {
+        exchangeRate: activeExchangeRate,
+        exciseTaxRate: activeExciseTaxRate,
         records: sales.records.map((r) => ({
           buyerName: r.buyerName,
           destinationCountry: r.destinationCountry,
@@ -191,7 +330,10 @@ const DataEntry: React.FC<DataEntryProps> = ({ user, contractors, commodities, s
           unit: r.unit,
           // Backend report generator expects these keys
           fobValuePhp: r.valuePhp,
-          fobValueUsd: r.valueUsd
+          fobValueUsd: r.valueUsd,
+          exchangeRate: r.exchangeRate || activeExchangeRate,
+          exciseTaxRate: r.exciseTaxRate || activeExciseTaxRate,
+          exciseTaxPayable: r.exciseTaxPayable
         }))
       },
       employment
@@ -562,153 +704,251 @@ const DataEntry: React.FC<DataEntryProps> = ({ user, contractors, commodities, s
                 type="button"
                 disabled={readOnly}
                 className="text-sm font-semibold text-blue-600 hover:underline disabled:opacity-50"
-                onClick={() =>
-                  setSales({
-                    records: [
-                      ...sales.records,
-                      {
-                        buyerName: '',
-                        destinationCountry: countries[0]?.name ?? 'Philippines',
-                        isExport: false,
-                        quantity: 0,
-                        unit: production.unit || selectedCommodity?.defaultUnit?.name || '',
-                        valuePhp: 0,
-                        valueUsd: 0
-                      }
-                    ]
-                  })
-                }
+                onClick={() => {
+                  const newRecord: typeof sales.records[0] = {
+                    buyerName: '',
+                    destinationCountry: countries[0]?.name ?? 'Philippines',
+                    isExport: false,
+                    quantity: 0,
+                    unit: production.unit || selectedCommodity?.defaultUnit?.name || '',
+                    valuePhp: 0,
+                    valueUsd: 0,
+                    exchangeRate: activeExchangeRate,
+                    exciseTaxRate: activeExciseTaxRate,
+                    exciseTaxPayable: 0
+                  };
+                  setSales({ records: [...sales.records, newRecord] });
+                }}
               >
                 + Add Sale
               </button>
             </div>
 
+            {/* Exchange Rate & Excise Tax info panel */}
+            <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 space-y-2">
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="flex-1 min-w-[200px]">
+                  <p className="text-xs font-bold text-slate-600 mb-0.5">USD/PHP Exchange Rate</p>
+                  {officialExchangeRate != null ? (
+                    <p className="text-sm font-semibold text-slate-800">
+                      ₱{officialExchangeRate.toFixed(4)}
+                      <span className="ml-1 text-xs font-normal text-slate-500">({exchangeRateSource ?? 'DB'})</span>
+                      {isExchangeRateOverridden && (
+                        <span className="ml-2 text-xs text-amber-600 font-semibold">→ Override: ₱{Number(exchangeRateOverrideValue).toFixed(4)}</span>
+                      )}
+                    </p>
+                  ) : (
+                    <p className="text-sm text-slate-500 italic">No rate on record for this month — enter manually.</p>
+                  )}
+                </div>
+                <div className="flex-1 min-w-[200px]">
+                  <p className="text-xs font-bold text-slate-600 mb-0.5">Excise Tax Rate</p>
+                  <p className="text-sm font-semibold text-slate-800">
+                    {(activeExciseTaxRate * 100).toFixed(2)}%
+                    <span className="ml-1 text-xs font-normal text-slate-500">({exciseTaxLegalBasis})</span>
+                    {isExciseTaxOverridden && (
+                      <span className="ml-2 text-xs text-amber-600 font-semibold">Overridden</span>
+                    )}
+                  </p>
+                </div>
+                {!readOnly && (
+                  <div className="flex gap-2 shrink-0">
+                    <button
+                      type="button"
+                      className="text-xs px-3 py-1.5 rounded-lg border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 font-semibold"
+                      onClick={handleExchangeRateOverride}
+                    >
+                      Override Rate
+                    </button>
+                    <button
+                      type="button"
+                      className="text-xs px-3 py-1.5 rounded-lg border border-orange-300 bg-orange-50 text-orange-700 hover:bg-orange-100 font-semibold"
+                      onClick={handleExciseTaxOverride}
+                    >
+                      Edit Tax
+                    </button>
+                  </div>
+                )}
+              </div>
+              <p className="text-[10px] text-slate-400">Rates auto-populate from the reporting month. Encoder may override with a locked-in contract rate.</p>
+            </div>
+
             {sales.records.length === 0 && <div className="text-sm text-slate-500">No sales records yet.</div>}
 
-            {sales.records.map((r, idx) => (
-              <div key={idx} className="border border-slate-200 rounded-xl p-4 bg-slate-50 space-y-3">
-                <div className="flex justify-end">
-                  <button
-                    type="button"
-                    disabled={readOnly}
-                    className="text-xs font-semibold text-red-600 hover:underline disabled:opacity-50"
-                    onClick={() => setSales({ records: sales.records.filter((_, i) => i !== idx) })}
-                  >
-                    Remove
-                  </button>
-                </div>
+            {sales.records.map((r, idx) => {
+              const displayFobPhp = r.valuePhp > 0 ? r.valuePhp : (activeExchangeRate > 0 && r.valueUsd > 0 ? r.valueUsd * activeExchangeRate : 0);
+              const computedExciseTax = displayFobPhp * activeExciseTaxRate;
+              const displayFobPhpValue = r.valuePhp > 0 ? r.valuePhp : (displayFobPhp > 0 ? parseFloat(displayFobPhp.toFixed(2)) : 0);
+              const displayExciseTax = parseFloat((r.exciseTaxPayable > 0 ? r.exciseTaxPayable : computedExciseTax).toFixed(2));
 
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                  <div className="md:col-span-2">
-                    <label className="block text-[10px] font-bold text-slate-600 mb-1">Buyer Name</label>
-                    <input
-                      className="w-full p-2 border border-slate-200 rounded-lg"
-                      value={r.buyerName}
-                      onChange={(e) => {
-                        const next = [...sales.records];
-                        next[idx] = { ...next[idx], buyerName: e.target.value };
-                        setSales({ records: next });
-                      }}
+              return (
+                <div key={idx} className="border border-slate-200 rounded-xl p-4 bg-slate-50 space-y-3">
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
                       disabled={readOnly}
-                    />
+                      className="text-xs font-semibold text-red-600 hover:underline disabled:opacity-50"
+                      onClick={() => setSales({ records: sales.records.filter((_, i) => i !== idx) })}
+                    >
+                      Remove
+                    </button>
                   </div>
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-600 mb-1">Country</label>
-                      <select
-                        className="w-full p-2 border border-slate-200 rounded-lg"
-                        value={r.destinationCountry}
-                        onChange={(e) => {
-                          const next = [...sales.records];
-                          next[idx] = { ...next[idx], destinationCountry: e.target.value };
-                          setSales({ records: next });
-                        }}
-                        disabled={readOnly}
-                      >
-                        <option value="">Select country</option>
-                        {countries.map((c) => (
-                          <option key={c.id} value={c.name}>
-                            {c.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  <div className="flex items-end gap-2">
-                    <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-700">
+
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                    <div className="md:col-span-2">
+                      <label className="block text-[10px] font-bold text-slate-600 mb-1">Buyer Name</label>
                       <input
-                        type="checkbox"
-                        checked={r.isExport}
+                        className="w-full p-2 border border-slate-200 rounded-lg"
+                        value={r.buyerName}
                         onChange={(e) => {
                           const next = [...sales.records];
-                          next[idx] = { ...next[idx], isExport: e.target.checked };
+                          next[idx] = { ...next[idx], buyerName: e.target.value };
                           setSales({ records: next });
                         }}
                         disabled={readOnly}
                       />
-                      Export
-                    </label>
-                  </div>
+                    </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-600 mb-1">Country</label>
+                        <select
+                          className="w-full p-2 border border-slate-200 rounded-lg"
+                          value={r.destinationCountry}
+                          onChange={(e) => {
+                            const next = [...sales.records];
+                            next[idx] = { ...next[idx], destinationCountry: e.target.value };
+                            setSales({ records: next });
+                          }}
+                          disabled={readOnly}
+                        >
+                          <option value="">Select country</option>
+                          {countries.map((c) => (
+                            <option key={c.id} value={c.name}>
+                              {c.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    <div className="flex items-end gap-2">
+                      <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={r.isExport}
+                          onChange={(e) => {
+                            const next = [...sales.records];
+                            next[idx] = { ...next[idx], isExport: e.target.checked };
+                            setSales({ records: next });
+                          }}
+                          disabled={readOnly}
+                        />
+                        Export
+                      </label>
+                    </div>
 
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-600 mb-1">Quantity</label>
-                    <input
-                      type="number"
-                      className="w-full p-2 border border-slate-200 rounded-lg"
-                      value={r.quantity}
-                      onChange={(e) => {
-                        const next = [...sales.records];
-                        next[idx] = { ...next[idx], quantity: Number(e.target.value) };
-                        setSales({ records: next });
-                      }}
-                      disabled={readOnly}
-                    />
-                  </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 mb-1">Quantity</label>
+                      <input
+                        type="number"
+                        className="w-full p-2 border border-slate-200 rounded-lg"
+                        value={r.quantity}
+                        onChange={(e) => {
+                          const next = [...sales.records];
+                          next[idx] = { ...next[idx], quantity: Number(e.target.value) };
+                          setSales({ records: next });
+                        }}
+                        disabled={readOnly}
+                      />
+                    </div>
 
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-600 mb-1">Unit</label>
-                    <input
-                      className="w-full p-2 border border-slate-200 rounded-lg"
-                      value={r.unit}
-                      onChange={(e) => {
-                        const next = [...sales.records];
-                        next[idx] = { ...next[idx], unit: e.target.value };
-                        setSales({ records: next });
-                      }}
-                      disabled={readOnly}
-                    />
-                  </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 mb-1">Unit</label>
+                      <input
+                        className="w-full p-2 border border-slate-200 rounded-lg"
+                        value={r.unit}
+                        onChange={(e) => {
+                          const next = [...sales.records];
+                          next[idx] = { ...next[idx], unit: e.target.value };
+                          setSales({ records: next });
+                        }}
+                        disabled={readOnly}
+                      />
+                    </div>
 
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-600 mb-1">FOB Value (PHP)</label>
-                    <input
-                      type="number"
-                      className="w-full p-2 border border-slate-200 rounded-lg"
-                      value={r.valuePhp}
-                      onChange={(e) => {
-                        const next = [...sales.records];
-                        next[idx] = { ...next[idx], valuePhp: Number(e.target.value) };
-                        setSales({ records: next });
-                      }}
-                      disabled={readOnly}
-                    />
-                  </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 mb-1">FOB Value (USD)</label>
+                      <input
+                        type="number"
+                        className="w-full p-2 border border-slate-200 rounded-lg"
+                        value={r.valueUsd}
+                        onChange={(e) => {
+                          const usd = Number(e.target.value);
+                          const php = activeExchangeRate > 0 ? usd * activeExchangeRate : r.valuePhp;
+                          const tax = php * activeExciseTaxRate;
+                          const next = [...sales.records];
+                          next[idx] = { ...next[idx], valueUsd: usd, valuePhp: php, exchangeRate: activeExchangeRate, exciseTaxRate: activeExciseTaxRate, exciseTaxPayable: tax };
+                          setSales({ records: next });
+                        }}
+                        disabled={readOnly}
+                      />
+                    </div>
 
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-600 mb-1">FOB Value (USD)</label>
-                    <input
-                      type="number"
-                      className="w-full p-2 border border-slate-200 rounded-lg"
-                      value={r.valueUsd}
-                      onChange={(e) => {
-                        const next = [...sales.records];
-                        next[idx] = { ...next[idx], valueUsd: Number(e.target.value) };
-                        setSales({ records: next });
-                      }}
-                      disabled={readOnly}
-                    />
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 mb-1">
+                        FOB Value (PHP ₱)
+                        {activeExchangeRate > 0 && r.valueUsd > 0 && (
+                          <span className="ml-1 text-blue-500 font-normal">(auto-computed)</span>
+                        )}
+                      </label>
+                      <input
+                        type="number"
+                        className="w-full p-2 border border-slate-200 rounded-lg"
+                        value={displayFobPhpValue}
+                        onChange={(e) => {
+                          const php = Number(e.target.value);
+                          const tax = php * activeExciseTaxRate;
+                          const next = [...sales.records];
+                          next[idx] = { ...next[idx], valuePhp: php, exciseTaxRate: activeExciseTaxRate, exciseTaxPayable: tax };
+                          setSales({ records: next });
+                        }}
+                        disabled={readOnly}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 mb-1">
+                        Excise Tax Payable (₱)
+                        <span className="ml-1 text-[9px] font-normal text-slate-400">({(activeExciseTaxRate * 100).toFixed(0)}%)</span>
+                      </label>
+                      <input
+                        type="number"
+                        className="w-full p-2 border border-slate-200 rounded-lg bg-slate-100 text-slate-700"
+                        value={displayExciseTax}
+                        readOnly
+                      />
+                    </div>
                   </div>
                 </div>
+              );
+            })}
+
+            {/* Estimated Excise Tax Payable Summary */}
+            {sales.records.length > 0 && (
+              <div className="mt-2 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-bold text-slate-600">Estimated Excise Tax Payable</p>
+                    <p className="text-[10px] text-slate-400">
+                      Sum of all records × {(activeExciseTaxRate * 100).toFixed(2)}% excise tax ({exciseTaxLegalBasis})
+                    </p>
+                  </div>
+                  <p className="text-xl font-bold text-emerald-700">
+                    ₱{sales.records.reduce((sum, r) => {
+                      const php = r.valuePhp > 0 ? r.valuePhp : (activeExchangeRate > 0 && r.valueUsd > 0 ? r.valueUsd * activeExchangeRate : 0);
+                      return sum + (r.exciseTaxPayable > 0 ? r.exciseTaxPayable : php * activeExciseTaxRate);
+                    }, 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
+                </div>
               </div>
-            ))}
+            )}
           </div>
         )}
 
@@ -989,26 +1229,67 @@ const DataEntry: React.FC<DataEntryProps> = ({ user, contractors, commodities, s
                   {(recentViewSubmission.sales?.records ?? []).length === 0 ? (
                     <div className="text-xs text-slate-500">No sales records</div>
                   ) : (
-                    (recentViewSubmission.sales?.records ?? []).map((r, idx) => (
-                      <div key={idx} className="p-3 bg-slate-50 rounded grid grid-cols-1 md:grid-cols-4 gap-2">
-                        <div>
-                          <div className="text-xs text-slate-500">Buyer</div>
-                          <div className="font-semibold">{r.buyerName || '—'}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-slate-500">Country</div>
-                          <div className="font-semibold">{r.destinationCountry || '—'}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-slate-500">Quantity</div>
-                          <div className="font-semibold">{r.quantity ?? '—'} {r.unit ?? ''}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-slate-500">Value (PHP)</div>
-                          <div className="font-semibold">{r.valuePhp ?? r.fobValuePhp ?? '—'}</div>
-                        </div>
-                      </div>
-                    ))
+                    <>
+                      {(recentViewSubmission.sales?.records ?? []).map((r, idx) => {
+                        const fobPhp = r.fobValuePhp ?? r.valuePhp ?? 0;
+                        const taxRate = r.exciseTaxRate ?? recentViewSubmission.sales?.exciseTaxRate ?? 0;
+                        const taxPayable = r.exciseTaxPayable ?? (fobPhp > 0 && taxRate > 0 ? fobPhp * taxRate : 0);
+                        return (
+                          <div key={idx} className="p-3 bg-slate-50 rounded grid grid-cols-1 md:grid-cols-4 gap-2">
+                            <div>
+                              <div className="text-xs text-slate-500">Buyer</div>
+                              <div className="font-semibold">{r.buyerName || '—'}</div>
+                            </div>
+                            <div>
+                              <div className="text-xs text-slate-500">Country</div>
+                              <div className="font-semibold">{r.destinationCountry || '—'}</div>
+                            </div>
+                            <div>
+                              <div className="text-xs text-slate-500">Quantity</div>
+                              <div className="font-semibold">{r.quantity ?? '—'} {r.unit ?? ''}</div>
+                            </div>
+                            <div>
+                              <div className="text-xs text-slate-500">FOB Value (PHP)</div>
+                              <div className="font-semibold">{fobPhp ? Number(fobPhp).toLocaleString('en-PH', { minimumFractionDigits: 2 }) : '—'}</div>
+                            </div>
+                            <div>
+                              <div className="text-xs text-slate-500">FOB Value (USD)</div>
+                              <div className="font-semibold">{r.fobValueUsd ?? r.valueUsd ? Number(r.fobValueUsd ?? r.valueUsd).toLocaleString('en-US', { minimumFractionDigits: 2 }) : '—'}</div>
+                            </div>
+                            <div>
+                              <div className="text-xs text-slate-500">Excise Tax Rate</div>
+                              <div className="font-semibold">{taxRate > 0 ? `${(taxRate * 100).toFixed(2)}%` : '—'}</div>
+                            </div>
+                            <div className="md:col-span-2">
+                              <div className="text-xs text-slate-500">Excise Tax Payable (₱)</div>
+                              <div className="font-semibold text-emerald-700">{taxPayable > 0 ? Number(taxPayable).toLocaleString('en-PH', { minimumFractionDigits: 2 }) : '—'}</div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {/* Estimated Excise Tax Payable total */}
+                      {(() => {
+                        const records = recentViewSubmission.sales?.records ?? [];
+                        const globalTaxRate = recentViewSubmission.sales?.exciseTaxRate ?? 0;
+                        const total = records.reduce((sum: number, r: any) => {
+                          const fobPhp = r.fobValuePhp ?? r.valuePhp ?? 0;
+                          const taxRate = r.exciseTaxRate ?? globalTaxRate;
+                          const taxPayable = r.exciseTaxPayable ?? (fobPhp > 0 && taxRate > 0 ? fobPhp * taxRate : 0);
+                          return sum + Number(taxPayable);
+                        }, 0);
+                        return total > 0 ? (
+                          <div className="mt-2 p-3 rounded-xl border border-emerald-200 bg-emerald-50 flex items-center justify-between">
+                            <div>
+                              <div className="text-xs font-bold text-slate-600">Estimated Excise Tax Payable</div>
+                              <div className="text-[10px] text-slate-400">Total for this reporting period</div>
+                            </div>
+                            <div className="text-lg font-bold text-emerald-700">
+                              ₱{total.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </div>
+                          </div>
+                        ) : null;
+                      })()}
+                    </>
                   )}
                 </div>
               </div>

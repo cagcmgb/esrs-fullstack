@@ -180,6 +180,32 @@ async function upsertReportPermissions() {
         }
     }
 }
+async function upsertExciseTaxConfigs() {
+    // Pre-RA 12253: old rate (4% — keep same value, date boundary preserved for future rule changes)
+    await prisma.exciseTaxConfig.upsert({
+        where: { id: 'excise-pre-ra12253' },
+        update: {},
+        create: {
+            id: 'excise-pre-ra12253',
+            effectiveFrom: new Date('2000-01-01'),
+            effectiveTo: new Date('2026-02-16'),
+            rate: '0.04',
+            legalBasis: 'Prior law'
+        }
+    });
+    // RA 12253 effective 2026-02-17
+    await prisma.exciseTaxConfig.upsert({
+        where: { id: 'excise-ra12253' },
+        update: {},
+        create: {
+            id: 'excise-ra12253',
+            effectiveFrom: new Date('2026-02-17'),
+            effectiveTo: null,
+            rate: '0.04',
+            legalBasis: 'RA 12253'
+        }
+    });
+}
 async function main() {
     await upsertPermitTypes();
     await upsertContractorStatuses();
@@ -187,6 +213,7 @@ async function main() {
     await upsertCommodities();
     await upsertUsers();
     await upsertReportPermissions();
+    await upsertExciseTaxConfigs();
 }
 main()
     .then(async () => {

@@ -54,11 +54,13 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  submissionsCreated  Submission[]        @relation("SubmissionCreatedBy")
-  submissionsVerified Submission[]        @relation("SubmissionVerifiedBy")
-  contractorsVerified Contractor[]        @relation("ContractorVerifiedBy")
-  contractorsCreated  Contractor[]        @relation("ContractorCreatedBy")
-  contractorHistories ContractorHistory[] @relation("ContractorHistoryChangedBy")
+  submissionsCreated    Submission[]          @relation("SubmissionCreatedBy")
+  submissionsVerified   Submission[]          @relation("SubmissionVerifiedBy")
+  contractorsVerified   Contractor[]          @relation("ContractorVerifiedBy")
+  contractorsCreated    Contractor[]          @relation("ContractorCreatedBy")
+  contractorHistories   ContractorHistory[]   @relation("ContractorHistoryChangedBy")
+  exchangeRateOverrides ExchangeRateOverride[] @relation("ExchangeRateOverrideBy")
+  exciseTaxOverrides    ExciseTaxOverride[]   @relation("ExciseTaxOverrideBy")
 }
 
 model PermitType {
@@ -236,7 +238,9 @@ model Submission {
   verifiedBy   User?     @relation("SubmissionVerifiedBy", fields: [verifiedById], references: [id])
   verifiedAt   DateTime?
 
-  attachments Attachment[]
+  attachments          Attachment[]
+  exchangeRateOverride ExchangeRateOverride[]
+  exciseTaxOverride    ExciseTaxOverride[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -290,4 +294,73 @@ model ReportPermission {
   canView    Boolean    @default(true)
 
   @@unique([role, reportType])
+}
+
+/// Monthly average exchange rates keyed by currency pair + year + month.
+model HistoricalExchangeRate {
+  id           String   @id @default(cuid())
+  /// Currency pair in the form "USD/PHP"
+  currencyPair String
+  year         Int
+  month        Int
+  /// Monthly average rate (e.g., 58.40 for USD→PHP)
+  rate         Decimal  @db.Decimal(18, 6)
+  /// Source of the rate: BSP, MGB, manual, etc.
+  source       String   @default("manual")
+  fetchedAt    DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([currencyPair, year, month])
+  @@index([year, month])
+}
+
+/// Date-effective excise tax rate configuration (supports RA changes over time).
+model ExciseTaxConfig {
+  id           String   @id @default(cuid())
+  /// The date from which this rate is effective (inclusive)
+  effectiveFrom DateTime
+  /// The date until which this rate is effective (inclusive), null = open-ended
+  effectiveTo   DateTime?
+  /// Tax rate as a decimal (e.g., 0.04 for 4%)
+  rate          Decimal  @db.Decimal(8, 6)
+  /// Legal reference e.g. "RA 12253"
+  legalBasis    String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([effectiveFrom])
+}
+
+/// Per-submission exchange rate override with audit trail.
+model ExchangeRateOverride {
+  id           String   @id @default(cuid())
+  submissionId String
+  submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  currencyPair String
+  officialRate Decimal  @db.Decimal(18, 6)
+  overrideRate Decimal  @db.Decimal(18, 6)
+  reason       String
+  overriddenById String
+  overriddenBy   User   @relation("ExchangeRateOverrideBy", fields: [overriddenById], references: [id])
+  createdAt    DateTime @default(now())
+
+  @@index([submissionId])
+}
+
+/// Per-submission excise tax override with audit trail.
+model ExciseTaxOverride {
+  id           String   @id @default(cuid())
+  submissionId String
+  submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  officialRate Decimal  @db.Decimal(8, 6)
+  overrideRate Decimal  @db.Decimal(8, 6)
+  reason       String
+  overriddenById String
+  overriddenBy   User   @relation("ExciseTaxOverrideBy", fields: [overriddenById], references: [id])
+  createdAt    DateTime @default(now())
+
+  @@index([submissionId])
 }
