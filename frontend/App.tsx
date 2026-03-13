@@ -119,7 +119,7 @@ const App: React.FC = () => {
 
   return (
     <Layout user={user} activeTab={activeTab} setActiveTab={setActiveTab} onLogout={handleLogout}>
-      {activeTab === 'Dashboard' && <Dashboard contractors={contractors} summary={summary} />}
+      {activeTab === 'Dashboard' && <Dashboard contractors={contractors} summary={summary} onNavigate={setActiveTab} />}
 
       {activeTab === 'Contractors' && user.role !== 'GUEST' && (
         <Contractors
