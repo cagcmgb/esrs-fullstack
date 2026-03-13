@@ -161,10 +161,10 @@ exchangeRatesRouter.post('/override', requireRole([UserRole.ADMIN, UserRole.CENT
 }));
 /**
  * POST /api/exchange-rates/excise-tax/override
- * Record an excise tax override for a submission (admin override with reason).
- * Admin and Central Office only.
+ * Record an excise tax override for a submission (requires reason for audit trail).
+ * Available to ADMIN, CENTRAL_OFFICE, and REGIONAL_ECONOMIST roles.
  */
-exchangeRatesRouter.post('/excise-tax/override', requireRole([UserRole.ADMIN, UserRole.CENTRAL_OFFICE]), asyncHandler(async (req, res) => {
+exchangeRatesRouter.post('/excise-tax/override', requireRole([UserRole.ADMIN, UserRole.CENTRAL_OFFICE, UserRole.REGIONAL_ECONOMIST]), asyncHandler(async (req, res) => {
     if (!req.user)
         throw unauthorized();
     const { submissionId, officialRate, overrideRate, reason } = req.body;

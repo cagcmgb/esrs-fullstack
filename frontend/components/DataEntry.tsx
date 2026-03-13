@@ -760,15 +760,13 @@ const DataEntry: React.FC<DataEntryProps> = ({ user, contractors, commodities, s
                     >
                       Override Rate
                     </button>
-                    {canAdminEdit && (
-                      <button
-                        type="button"
-                        className="text-xs px-3 py-1.5 rounded-lg border border-orange-300 bg-orange-50 text-orange-700 hover:bg-orange-100 font-semibold"
-                        onClick={handleExciseTaxOverride}
-                      >
-                        Edit Tax
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      className="text-xs px-3 py-1.5 rounded-lg border border-orange-300 bg-orange-50 text-orange-700 hover:bg-orange-100 font-semibold"
+                      onClick={handleExciseTaxOverride}
+                    >
+                      Edit Tax
+                    </button>
                   </div>
                 )}
               </div>
@@ -876,7 +874,7 @@ const DataEntry: React.FC<DataEntryProps> = ({ user, contractors, commodities, s
                     </div>
 
                     <div>
-                      <label className="block text-[10px] font-bold text-slate-600 mb-1">FOB Value (USD $)</label>
+                      <label className="block text-[10px] font-bold text-slate-600 mb-1">FOB Value (USD)</label>
                       <input
                         type="number"
                         className="w-full p-2 border border-slate-200 rounded-lg"
@@ -1231,26 +1229,67 @@ const DataEntry: React.FC<DataEntryProps> = ({ user, contractors, commodities, s
                   {(recentViewSubmission.sales?.records ?? []).length === 0 ? (
                     <div className="text-xs text-slate-500">No sales records</div>
                   ) : (
-                    (recentViewSubmission.sales?.records ?? []).map((r, idx) => (
-                      <div key={idx} className="p-3 bg-slate-50 rounded grid grid-cols-1 md:grid-cols-4 gap-2">
-                        <div>
-                          <div className="text-xs text-slate-500">Buyer</div>
-                          <div className="font-semibold">{r.buyerName || '—'}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-slate-500">Country</div>
-                          <div className="font-semibold">{r.destinationCountry || '—'}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-slate-500">Quantity</div>
-                          <div className="font-semibold">{r.quantity ?? '—'} {r.unit ?? ''}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-slate-500">Value (PHP)</div>
-                          <div className="font-semibold">{r.valuePhp ?? r.fobValuePhp ?? '—'}</div>
-                        </div>
-                      </div>
-                    ))
+                    <>
+                      {(recentViewSubmission.sales?.records ?? []).map((r, idx) => {
+                        const fobPhp = r.fobValuePhp ?? r.valuePhp ?? 0;
+                        const taxRate = r.exciseTaxRate ?? recentViewSubmission.sales?.exciseTaxRate ?? 0;
+                        const taxPayable = r.exciseTaxPayable ?? (fobPhp > 0 && taxRate > 0 ? fobPhp * taxRate : 0);
+                        return (
+                          <div key={idx} className="p-3 bg-slate-50 rounded grid grid-cols-1 md:grid-cols-4 gap-2">
+                            <div>
+                              <div className="text-xs text-slate-500">Buyer</div>
+                              <div className="font-semibold">{r.buyerName || '—'}</div>
+                            </div>
+                            <div>
+                              <div className="text-xs text-slate-500">Country</div>
+                              <div className="font-semibold">{r.destinationCountry || '—'}</div>
+                            </div>
+                            <div>
+                              <div className="text-xs text-slate-500">Quantity</div>
+                              <div className="font-semibold">{r.quantity ?? '—'} {r.unit ?? ''}</div>
+                            </div>
+                            <div>
+                              <div className="text-xs text-slate-500">FOB Value (PHP)</div>
+                              <div className="font-semibold">{fobPhp ? Number(fobPhp).toLocaleString('en-PH', { minimumFractionDigits: 2 }) : '—'}</div>
+                            </div>
+                            <div>
+                              <div className="text-xs text-slate-500">FOB Value (USD)</div>
+                              <div className="font-semibold">{r.fobValueUsd ?? r.valueUsd ? Number(r.fobValueUsd ?? r.valueUsd).toLocaleString('en-US', { minimumFractionDigits: 2 }) : '—'}</div>
+                            </div>
+                            <div>
+                              <div className="text-xs text-slate-500">Excise Tax Rate</div>
+                              <div className="font-semibold">{taxRate > 0 ? `${(taxRate * 100).toFixed(2)}%` : '—'}</div>
+                            </div>
+                            <div className="md:col-span-2">
+                              <div className="text-xs text-slate-500">Excise Tax Payable (₱)</div>
+                              <div className="font-semibold text-emerald-700">{taxPayable > 0 ? Number(taxPayable).toLocaleString('en-PH', { minimumFractionDigits: 2 }) : '—'}</div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {/* Estimated Excise Tax Payable total */}
+                      {(() => {
+                        const records = recentViewSubmission.sales?.records ?? [];
+                        const globalTaxRate = recentViewSubmission.sales?.exciseTaxRate ?? 0;
+                        const total = records.reduce((sum: number, r: any) => {
+                          const fobPhp = r.fobValuePhp ?? r.valuePhp ?? 0;
+                          const taxRate = r.exciseTaxRate ?? globalTaxRate;
+                          const taxPayable = r.exciseTaxPayable ?? (fobPhp > 0 && taxRate > 0 ? fobPhp * taxRate : 0);
+                          return sum + Number(taxPayable);
+                        }, 0);
+                        return total > 0 ? (
+                          <div className="mt-2 p-3 rounded-xl border border-emerald-200 bg-emerald-50 flex items-center justify-between">
+                            <div>
+                              <div className="text-xs font-bold text-slate-600">Estimated Excise Tax Payable</div>
+                              <div className="text-[10px] text-slate-400">Total for this reporting period</div>
+                            </div>
+                            <div className="text-lg font-bold text-emerald-700">
+                              ₱{total.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </div>
+                          </div>
+                        ) : null;
+                      })()}
+                    </>
                   )}
                 </div>
               </div>
