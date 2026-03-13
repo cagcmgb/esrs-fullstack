@@ -8,6 +8,8 @@ import { unauthorized } from '../utils/httpError.js';
 export const dashboardRouter = Router();
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+/** Submissions in DRAFT status older than this many days are considered late. */
+const LATE_FILING_THRESHOLD_DAYS = 30;
 
 dashboardRouter.get(
   '/summary',
@@ -197,14 +199,14 @@ dashboardRouter.get(
       }
     }
 
-    // ── Late filing: DRAFT submissions created >30 days ago ─────────────────
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    // ── Late filing: DRAFT submissions created more than LATE_FILING_THRESHOLD_DAYS ago ──
+    const lateFilingCutoff = new Date();
+    lateFilingCutoff.setDate(lateFilingCutoff.getDate() - LATE_FILING_THRESHOLD_DAYS);
 
     const lateFilingWhere: any = {
       status: 'DRAFT',
       year,
-      createdAt: { lt: thirtyDaysAgo }
+      createdAt: { lt: lateFilingCutoff }
     };
     if (req.user.role === UserRole.REGIONAL_ECONOMIST && req.user.regionCode) {
       lateFilingWhere.contractor = { regionCode: req.user.regionCode };

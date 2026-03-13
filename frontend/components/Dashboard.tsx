@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import type { Contractor, DashboardSummary, RegionalStat } from '../types';
 import {
   ComposedChart,
@@ -24,8 +24,11 @@ import {
   BarChart3,
   TrendingDown,
   Layers,
-  Activity
+  Activity,
+  MapPin,
+  X
 } from 'lucide-react';
+import PhilippineMap from './PhilippineMap';
 
 interface DashboardProps {
   contractors: Contractor[];
@@ -35,6 +38,9 @@ interface DashboardProps {
 
 const COLORS = ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316', '#84cc16'];
 
+// Placeholder multiplier for excise-tax target until a real annual target is stored in DB
+const TAX_TARGET_MULTIPLIER = 1.5;
+
 // Static LME mock prices (in USD/troy oz for gold, USD/t for others)
 const LME_PRICES = [
   { name: 'Gold', symbol: 'Au', price: 2342.50, unit: 'USD/troy oz', change: +1.2 },
@@ -43,27 +49,6 @@ const LME_PRICES = [
   { name: 'Silver', symbol: 'Ag', price: 29.40, unit: 'USD/troy oz', change: +2.1 },
   { name: 'Chromite', symbol: 'Cr', price: 310, unit: 'USD/t', change: -0.4 }
 ];
-
-// Approximate geographic sort order for Philippine regions (N→S)
-const REGION_SORT: Record<string, number> = {
-  CAR: 1, '01': 2, '02': 3, '03': 4, NCR: 5,
-  '4A': 6, IVA: 6, CALABARZON: 6,
-  '4B': 7, IVB: 7, MIMAROPA: 7,
-  '05': 8, V: 8,
-  '06': 9, VI: 9,
-  '07': 10, VII: 10,
-  '08': 11, VIII: 11,
-  '09': 12, IX: 12,
-  '10': 13, X: 13,
-  '11': 14, XI: 14,
-  CARAGA: 15, XIII: 15,
-  '12': 16, XII: 16,
-  BARMM: 17, ARMM: 17
-};
-
-function getRegionSortOrder(code: string): number {
-  return REGION_SORT[code.toUpperCase()] ?? REGION_SORT[code] ?? 99;
-}
 
 function formatPHP(value: number): string {
   if (value >= 1_000_000_000) return `₱${(value / 1_000_000_000).toFixed(2)}B`;
@@ -78,122 +63,12 @@ function formatQty(value: number): string {
   return `${value.toFixed(0)} DMT`;
 }
 
-// Compute production-value heat colour (blue gradient)
-function getHeatColor(value: number, maxValue: number): string {
-  if (maxValue === 0) return '#e2e8f0';
-  const intensity = Math.min(value / maxValue, 1);
-  if (intensity === 0) return '#e2e8f0';
-  if (intensity < 0.2) return '#bfdbfe';
-  if (intensity < 0.4) return '#93c5fd';
-  if (intensity < 0.6) return '#60a5fa';
-  if (intensity < 0.8) return '#3b82f6';
-  return '#1d4ed8';
-}
-
 function getMineralTypeBucket(c: Contractor): 'Metallic' | 'Non-Metallic' | 'Both' {
   const types = new Set(c.contractorCommodities.map((cc) => cc.commodity.mineralType));
   if (types.has('METALLIC') && types.has('NON_METALLIC')) return 'Both';
   if (types.has('METALLIC')) return 'Metallic';
   return 'Non-Metallic';
 }
-
-// Regional Heatmap component
-const RegionalHeatmap: React.FC<{ stats: RegionalStat[] }> = ({ stats }) => {
-  const [hoveredRegion, setHoveredRegion] = useState<RegionalStat | null>(null);
-  const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
-
-  const sorted = [...stats].sort(
-    (a, b) => getRegionSortOrder(a.regionCode) - getRegionSortOrder(b.regionCode)
-  );
-  const maxVal = Math.max(...sorted.map((s) => s.productionValue), 1);
-
-  const handleMouseEnter = (stat: RegionalStat, e: React.MouseEvent) => {
-    setHoveredRegion(stat);
-    setTooltipPos({ x: e.clientX, y: e.clientY });
-  };
-
-  const handleMouseMove = (e: React.MouseEvent) => {
-    setTooltipPos({ x: e.clientX, y: e.clientY });
-  };
-
-  return (
-    <div className="relative">
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-        {sorted.map((stat) => {
-          const bg = getHeatColor(stat.productionValue, maxVal);
-          const isDark = stat.productionValue / maxVal > 0.5;
-          return (
-            <div
-              key={stat.regionCode}
-              className="rounded-lg p-3 cursor-pointer transition-transform hover:scale-105 select-none"
-              style={{ backgroundColor: bg }}
-              onMouseEnter={(e) => handleMouseEnter(stat, e)}
-              onMouseMove={handleMouseMove}
-              onMouseLeave={() => setHoveredRegion(null)}
-            >
-              <p className={`text-xs font-bold truncate ${isDark ? 'text-white' : 'text-slate-700'}`}>
-                {stat.regionName.length > 20 ? stat.regionCode : stat.regionName}
-              </p>
-              <p className={`text-xs mt-0.5 ${isDark ? 'text-blue-100' : 'text-slate-500'}`}>
-                {formatPHP(stat.productionValue)}
-              </p>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Legend */}
-      <div className="flex items-center gap-2 mt-3">
-        <span className="text-xs text-slate-500">Low</span>
-        <div
-          className="flex-1 h-2 rounded-full"
-          style={{ background: 'linear-gradient(to right, #e2e8f0, #bfdbfe, #60a5fa, #1d4ed8)' }}
-        />
-        <span className="text-xs text-slate-500">High</span>
-      </div>
-
-      {/* Tooltip (portal-style, fixed) */}
-      {hoveredRegion && (
-        <div
-          className="fixed z-50 bg-slate-900 text-white rounded-xl shadow-2xl p-4 w-64 text-sm pointer-events-none"
-          style={{ left: tooltipPos.x + 12, top: tooltipPos.y - 80 }}
-        >
-          <p className="font-bold text-base mb-2">{hoveredRegion.regionName}</p>
-          <div className="space-y-1">
-            <div className="flex justify-between">
-              <span className="text-slate-400">Production Value</span>
-              <span className="font-semibold">{formatPHP(hoveredRegion.productionValue)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">F.O.B. Value</span>
-              <span className="font-semibold">{formatPHP(hoveredRegion.fobValue)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Leading Commodity</span>
-              <span className="font-semibold text-amber-400">{hoveredRegion.leadingCommodity}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Active Contractors</span>
-              <span className="font-semibold">{hoveredRegion.contractorCount}</span>
-            </div>
-          </div>
-          {hoveredRegion.topContractors.length > 0 && (
-            <div className="mt-2 pt-2 border-t border-slate-700">
-              <p className="text-slate-400 text-xs mb-1">Top Contractors</p>
-              {hoveredRegion.topContractors.map((c) => (
-                <p key={c.id} className="text-xs text-slate-300 truncate">• {c.name}</p>
-              ))}
-            </div>
-          )}
-          <div className="mt-2 pt-2 border-t border-slate-700 flex gap-3 text-xs">
-            <span className="text-emerald-400">✓ {hoveredRegion.verifiedCount} Verified</span>
-            <span className="text-amber-400">⏳ {hoveredRegion.pendingCount} Pending</span>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
 
 // Custom tooltip for dual-axis trend chart
 const TrendTooltip: React.FC<any> = ({ active, payload, label }) => {
@@ -216,12 +91,39 @@ const TrendTooltip: React.FC<any> = ({ active, payload, label }) => {
 };
 
 const Dashboard: React.FC<DashboardProps> = ({ contractors, summary, onNavigate }) => {
+  // ── Map drill-down state ────────────────────────────────────────────────────
+  const [selectedRegionPsgc, setSelectedRegionPsgc] = useState<string | null>(null);
+
+  // When a PSGC code is selected, find the matching RegionalStat
+  const selectedStat: RegionalStat | null = useMemo(() => {
+    if (!selectedRegionPsgc || !summary?.regionalStats) return null;
+    return (
+      summary.regionalStats.find((s) => {
+        const rc = s.regionCode;
+        if (rc === selectedRegionPsgc) return true;
+        if (rc.length === 10 && selectedRegionPsgc.length === 10 && rc.substring(0, 2) === selectedRegionPsgc.substring(0, 2)) return true;
+        return false;
+      }) ?? null
+    );
+  }, [selectedRegionPsgc, summary?.regionalStats]);
+
+  // Filter contractors by selected region (for donut chart, etc.)
+  const filteredContractors = useMemo(() => {
+    if (!selectedRegionPsgc) return contractors;
+    return contractors.filter((c) => {
+      const rc = c.regionCode;
+      if (rc === selectedRegionPsgc) return true;
+      if (rc.length === 10 && selectedRegionPsgc.length === 10 && rc.substring(0, 2) === selectedRegionPsgc.substring(0, 2)) return true;
+      return false;
+    });
+  }, [selectedRegionPsgc, contractors]);
+
   const regions = Array.from(new Set(contractors.map((c) => c.regionName)));
 
   const mineralData = [
-    { name: 'Metallic', value: contractors.filter((c) => getMineralTypeBucket(c) === 'Metallic').length },
-    { name: 'Non-Metallic', value: contractors.filter((c) => getMineralTypeBucket(c) === 'Non-Metallic').length },
-    { name: 'Both', value: contractors.filter((c) => getMineralTypeBucket(c) === 'Both').length }
+    { name: 'Metallic', value: filteredContractors.filter((c) => getMineralTypeBucket(c) === 'Metallic').length },
+    { name: 'Non-Metallic', value: filteredContractors.filter((c) => getMineralTypeBucket(c) === 'Non-Metallic').length },
+    { name: 'Both', value: filteredContractors.filter((c) => getMineralTypeBucket(c) === 'Both').length }
   ].filter((d) => d.value > 0);
 
   // Detect stockpile rising: if production significantly exceeds sales in last 3 months
@@ -229,7 +131,7 @@ const Dashboard: React.FC<DashboardProps> = ({ contractors, summary, onNavigate 
   const isRisingStockpile = recentTrend.length === 3 &&
     recentTrend.every((m) => m.productionQty > m.salesQty * 1.3);
 
-  // Report readiness segments
+  // Report readiness segments (global)
   const byStatus = summary?.submissions?.byStatus ?? {};
   const readinessData = [
     { name: 'Verified', value: byStatus['VERIFIED'] ?? 0, color: '#10b981' },
@@ -244,19 +146,49 @@ const Dashboard: React.FC<DashboardProps> = ({ contractors, summary, onNavigate 
 
   const maxRegionVal = topRegions[0]?.productionValue || 1;
 
+  // KPI values – use region-specific numbers when a region is selected
+  const displayFobValue = selectedStat ? selectedStat.fobValue : (summary?.totalFobValue ?? 0);
+  const displayExciseTax = selectedStat ? selectedStat.exciseTax : (summary?.estimatedExciseTax ?? 0);
+  const displayContractorCount = selectedStat ? selectedStat.contractorCount : (summary?.contractors.total ?? contractors.length);
+
   return (
     <div className="space-y-6">
+      {/* ── Region filter banner ─────────────────────────────────────────────── */}
+      {selectedStat && (
+        <div className="bg-blue-50 border border-blue-200 rounded-2xl px-5 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <MapPin size={16} className="text-blue-600" />
+            <span className="text-sm font-semibold text-blue-800">
+              Filtered by: {selectedStat.regionName}
+            </span>
+            <span className="text-xs text-blue-500">
+              · {selectedStat.leadingCommodity} · {selectedStat.contractorCount} contractors
+            </span>
+          </div>
+          <button
+            className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-900 font-medium"
+            onClick={() => setSelectedRegionPsgc(null)}
+          >
+            <X size={14} /> Clear filter
+          </button>
+        </div>
+      )}
+
       {/* ── Row 1: Smart Fiscal KPI Cards ──────────────────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {/* Enrolled Contractors */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
           <div className="flex items-center justify-between mb-4">
             <div className="p-3 rounded-xl bg-blue-500 text-white"><Users size={22} /></div>
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Live</span>
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+              {selectedStat ? 'Region' : 'Live'}
+            </span>
           </div>
-          <h3 className="text-slate-500 text-sm font-medium">Enrolled Contractors</h3>
+          <h3 className="text-slate-500 text-sm font-medium">
+            {selectedStat ? `Contractors — ${selectedStat.regionName}` : 'Enrolled Contractors'}
+          </h3>
           <p className="text-3xl font-bold text-slate-900 mt-1">
-            {summary?.contractors.total ?? contractors.length}
+            {displayContractorCount}
           </p>
           <p className="text-xs text-slate-400 mt-1">
             {summary?.contractors.verified ?? 0} verified · {summary?.contractors.pending ?? 0} pending
@@ -267,30 +199,39 @@ const Dashboard: React.FC<DashboardProps> = ({ contractors, summary, onNavigate 
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
           <div className="flex items-center justify-between mb-4">
             <div className="p-3 rounded-xl bg-emerald-500 text-white"><DollarSign size={22} /></div>
-            <span className="text-xs font-bold text-emerald-600 uppercase tracking-wider">Real-Time</span>
+            <span className="text-xs font-bold text-emerald-600 uppercase tracking-wider">
+              {selectedStat ? 'Region' : 'Real-Time'}
+            </span>
           </div>
-          <h3 className="text-slate-500 text-sm font-medium">Total F.O.B. Value ({summary?.year ?? new Date().getFullYear()})</h3>
+          <h3 className="text-slate-500 text-sm font-medium">
+            {selectedStat ? `F.O.B. — ${selectedStat.regionName}` : `Total F.O.B. Value (${summary?.year ?? new Date().getFullYear()})`}
+          </h3>
           <p className="text-3xl font-bold text-slate-900 mt-1">
-            {formatPHP(summary?.totalFobValue ?? 0)}
+            {formatPHP(displayFobValue)}
           </p>
-          <p className="text-xs text-slate-400 mt-1">Market value of reported sales</p>
+          <p className="text-xs text-slate-400 mt-1">
+            {selectedStat ? `Top: ${selectedStat.leadingCommodity}` : 'Market value of reported sales'}
+          </p>
         </div>
 
         {/* Excise Tax Revenue */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
           <div className="flex items-center justify-between mb-4">
             <div className="p-3 rounded-xl bg-amber-500 text-white"><TrendingUp size={22} /></div>
-            <span className="text-xs font-bold text-amber-600 uppercase tracking-wider">YTD</span>
+            <span className="text-xs font-bold text-amber-600 uppercase tracking-wider">
+              {selectedStat ? 'Region' : 'YTD'}
+            </span>
           </div>
-          <h3 className="text-slate-500 text-sm font-medium">Excise Tax Revenue</h3>
+          <h3 className="text-slate-500 text-sm font-medium">
+            {selectedStat ? `Excise Tax — ${selectedStat.regionName}` : 'Excise Tax Revenue'}
+          </h3>
           <p className="text-3xl font-bold text-slate-900 mt-1">
-            {formatPHP(summary?.estimatedExciseTax ?? 0)}
+            {formatPHP(displayExciseTax)}
           </p>
           {/* Progress bar: placeholder target = collected × 1.5 until a DB target field is available */}
-          {(summary?.estimatedExciseTax ?? 0) > 0 && (() => {
-            const collected = summary!.estimatedExciseTax;
-            const target = collected * 1.5;
-            const pct = Math.min(Math.round((collected / target) * 100), 100);
+          {displayExciseTax > 0 && (() => {
+            const target = (selectedStat ? selectedStat.exciseTax : (summary?.estimatedExciseTax ?? 0)) * TAX_TARGET_MULTIPLIER;
+            const pct = Math.min(Math.round((displayExciseTax / target) * 100), 100);
             return (
               <div className="mt-2">
                 <div className="flex justify-between text-xs text-slate-400 mb-1">
@@ -335,39 +276,90 @@ const Dashboard: React.FC<DashboardProps> = ({ contractors, summary, onNavigate 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Philippine Regional Heatmap */}
         <div className="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-2">
             <div>
-              <h3 className="text-lg font-bold text-slate-800">Regional Production Heatmap</h3>
-              <p className="text-xs text-slate-500 mt-0.5">Hover over a region for details · Colored by Total Production Value</p>
+              <h3 className="text-lg font-bold text-slate-800">Philippine Interactive Map</h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Hover for details · Click a region to filter the dashboard
+              </p>
             </div>
             <Globe2 size={20} className="text-slate-400" />
           </div>
-          {(summary?.regionalStats?.length ?? 0) > 0 ? (
-            <RegionalHeatmap stats={summary!.regionalStats} />
-          ) : (
-            <div className="h-48 flex items-center justify-center text-slate-400 text-sm">
-              No regional data available for {summary?.year ?? new Date().getFullYear()}
-            </div>
-          )}
+          <PhilippineMap
+            stats={summary?.regionalStats ?? []}
+            selectedRegionPsgc={selectedRegionPsgc}
+            onRegionClick={setSelectedRegionPsgc}
+          />
         </div>
 
         {/* Top 5 Regional Rankings */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-bold text-slate-800">Top Producers</h3>
+            <h3 className="text-lg font-bold text-slate-800">
+              {selectedStat ? 'Selected Region' : 'Top Producers'}
+            </h3>
             <BarChart3 size={18} className="text-slate-400" />
           </div>
-          <p className="text-xs text-slate-500 mb-4">Ranked by production value</p>
-          {topRegions.length > 0 ? (
+          <p className="text-xs text-slate-500 mb-4">
+            {selectedStat ? selectedStat.regionName : 'Ranked by production value'}
+          </p>
+
+          {/* When a region is selected, show its details */}
+          {selectedStat ? (
+            <div className="space-y-3">
+              <div className="bg-blue-50 rounded-xl p-4">
+                <p className="text-xs text-blue-600 font-semibold mb-2">Production Value</p>
+                <p className="text-2xl font-bold text-blue-900">{formatPHP(selectedStat.productionValue)}</p>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500">Top Commodity</p>
+                  <p className="text-sm font-bold text-amber-600 truncate">{selectedStat.leadingCommodity}</p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500">Contractors</p>
+                  <p className="text-sm font-bold text-slate-800">{selectedStat.contractorCount}</p>
+                </div>
+                <div className="bg-emerald-50 rounded-lg p-3">
+                  <p className="text-xs text-emerald-600">Verified</p>
+                  <p className="text-sm font-bold text-emerald-800">{selectedStat.verifiedCount}</p>
+                </div>
+                <div className="bg-amber-50 rounded-lg p-3">
+                  <p className="text-xs text-amber-600">Pending</p>
+                  <p className="text-sm font-bold text-amber-800">{selectedStat.pendingCount}</p>
+                </div>
+              </div>
+              {selectedStat.topContractors.length > 0 && (
+                <div className="mt-2">
+                  <p className="text-xs text-slate-500 mb-2 font-semibold">Top Contractors</p>
+                  {selectedStat.topContractors.map((c, i) => (
+                    <p key={c.id} className="text-xs text-slate-700 py-1 border-b border-slate-100 last:border-0">
+                      <span className="font-semibold text-slate-500">{i + 1}.</span> {c.name}
+                    </p>
+                  ))}
+                </div>
+              )}
+              <button
+                className="w-full mt-2 text-xs text-blue-600 hover:text-blue-800 font-medium text-center py-1"
+                onClick={() => setSelectedRegionPsgc(null)}
+              >
+                ← Back to all regions
+              </button>
+            </div>
+          ) : topRegions.length > 0 ? (
             <div className="space-y-3">
               {topRegions.map((r, idx) => (
-                <div key={r.regionCode}>
+                <div
+                  key={r.regionCode}
+                  className="cursor-pointer group"
+                  title={`Click to filter by ${r.regionName}`}
+                >
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center gap-2">
                       <span className={`w-5 h-5 rounded-full text-white text-xs flex items-center justify-center font-bold ${idx === 0 ? 'bg-amber-500' : idx === 1 ? 'bg-slate-500' : idx === 2 ? 'bg-amber-700' : 'bg-slate-300'}`}>
                         {idx + 1}
                       </span>
-                      <span className="text-sm font-medium text-slate-700 truncate max-w-[110px]">
+                      <span className="text-sm font-medium text-slate-700 truncate max-w-[110px] group-hover:text-blue-600">
                         {r.regionName.length > 15 ? r.regionCode : r.regionName}
                       </span>
                     </div>
@@ -575,12 +567,14 @@ const Dashboard: React.FC<DashboardProps> = ({ contractors, summary, onNavigate 
               <p className="text-xl font-bold text-slate-800">{summary?.submissions.total ?? 0}</p>
             </div>
             <div>
-              <p className="text-xs text-slate-400">Regions Active</p>
-              <p className="text-xl font-bold text-slate-800">{regions.length}</p>
+              <p className="text-xs text-slate-400">{selectedStat ? 'Filtered Region' : 'Regions Active'}</p>
+              <p className="text-xl font-bold text-slate-800">{selectedStat ? 1 : regions.length}</p>
             </div>
             <div>
               <p className="text-xs text-slate-400">Verified</p>
-              <p className="text-xl font-bold text-emerald-600">{byStatus['VERIFIED'] ?? 0}</p>
+              <p className="text-xl font-bold text-emerald-600">
+                {selectedStat ? selectedStat.verifiedCount : (byStatus['VERIFIED'] ?? 0)}
+              </p>
             </div>
           </div>
         </div>
