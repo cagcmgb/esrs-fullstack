@@ -129,11 +129,36 @@ export interface ReportPermission {
 }
 
 // Dashboard payload
+export interface RegionalStat {
+  regionCode: string;
+  regionName: string;
+  productionValue: number;
+  fobValue: number;
+  exciseTax: number;
+  contractorCount: number;
+  topContractors: { id: string; name: string }[];
+  leadingCommodity: string;
+  verifiedCount: number;
+  pendingCount: number;
+}
+
+export interface MonthlyTrend {
+  month: number;
+  monthName: string;
+  productionQty: number;
+  salesQty: number;
+}
+
 export interface DashboardSummary {
   year: number;
   contractors: { total: number; verified: number; pending: number };
   submissions: { total: number; byStatus: Record<string, number> };
   productionByCommodity: { commodityName: string; quantity: number; value: number }[];
+  regionalStats: RegionalStat[];
+  monthlyTrend: MonthlyTrend[];
+  totalFobValue: number;
+  estimatedExciseTax: number;
+  lateFilingCount: number;
 }
 
 // Location types (PSGC Cloud)
