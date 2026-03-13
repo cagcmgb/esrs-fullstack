@@ -27,12 +27,11 @@ const createSchema = z.object({
     username: z.string().min(2),
     role: z.enum(['ADMIN', 'CENTRAL_OFFICE', 'REGIONAL_ECONOMIST', 'GUEST']),
     regionCode: z.string().optional().nullable(),
-    password: z.string().min(8).optional()
+    password: z.string().min(8)
 });
 usersRouter.post('/', asyncHandler(async (req, res) => {
     const body = createSchema.parse(req.body);
-    const password = body.password ?? 'password';
-    const passwordHash = await bcrypt.hash(password, 10);
+    const passwordHash = await bcrypt.hash(body.password, 10);
     const user = await prisma.user.create({
         data: {
             name: body.name,

@@ -285,7 +285,7 @@ reportsRouter.get(
       ? submissions.filter((s) => s.month && Math.ceil(s.month / 3) === Number(quarter))
       : submissions;
 
-    const columns = ['Year', 'Month', 'Quarter', 'Region', 'Contractor ID', 'Contractor/Company Name', 'Commodity', 'Destination Country', 'Qty', 'Unit', 'FOB Value (PHP)', 'FOB Value (USD)', 'Export?'];
+    const columns = ['Year', 'Month', 'Quarter', 'Region', 'Contractor ID', 'Contractor/Company Name', 'Commodity', 'Destination Country', 'Qty', 'Unit', 'FOB Value (PHP)', 'FOB Value (USD)', 'Exchange Rate (USD/PHP)', 'Excise Tax Rate', 'Estimated Excise Tax Payable (PHP)', 'Export?'];
     const { workbook, sheet, headerRowIndex } = createStandardSheet('SALES REPORT', columns);
 
     let rowIndex = headerRowIndex + 1;
@@ -303,6 +303,9 @@ reportsRouter.get(
         const qtr = s.month ? Math.ceil(s.month / 3) : '';
         const fobPhp = Number((r as any).fobValuePhp ?? (r as any).valuePhp ?? 0);
         const fobUsd = Number((r as any).fobValueUsd ?? (r as any).valueUsd ?? 0);
+        const exchangeRate = Number((r as any).exchangeRate ?? 0);
+        const exciseTaxRate = Number((r as any).exciseTaxRate ?? 0);
+        const exciseTaxPayable = Number((r as any).exciseTaxPayable ?? (fobPhp > 0 && exciseTaxRate > 0 ? fobPhp * exciseTaxRate : 0));
         const values = [
           s.year,
           s.month ?? '',
@@ -316,6 +319,9 @@ reportsRouter.get(
           r.unit ?? s.commodity.defaultUnit?.name ?? '',
           fobPhp,
           fobUsd,
+          exchangeRate || '',
+          exciseTaxRate ? `${(exciseTaxRate * 100).toFixed(0)}%` : '',
+          exciseTaxPayable,
           r.isExport ? 'YES' : 'NO'
         ];
 

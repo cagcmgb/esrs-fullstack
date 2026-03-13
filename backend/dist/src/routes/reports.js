@@ -235,7 +235,7 @@ reportsRouter.get('/sales', asyncHandler(async (req, res) => {
     const filtered = quarter
         ? submissions.filter((s) => s.month && Math.ceil(s.month / 3) === Number(quarter))
         : submissions;
-    const columns = ['Year', 'Month', 'Quarter', 'Region', 'Contractor ID', 'Contractor/Company Name', 'Commodity', 'Destination Country', 'Qty', 'Unit', 'FOB Value (PHP)', 'FOB Value (USD)', 'Export?'];
+    const columns = ['Year', 'Month', 'Quarter', 'Region', 'Contractor ID', 'Contractor/Company Name', 'Commodity', 'Destination Country', 'Qty', 'Unit', 'FOB Value (PHP)', 'FOB Value (USD)', 'Exchange Rate (USD/PHP)', 'Excise Tax Rate', 'Estimated Excise Tax Payable (PHP)', 'Export?'];
     const { workbook, sheet, headerRowIndex } = createStandardSheet('SALES REPORT', columns);
     let rowIndex = headerRowIndex + 1;
     for (const s of filtered) {
@@ -250,6 +250,9 @@ reportsRouter.get('/sales', asyncHandler(async (req, res) => {
             const qtr = s.month ? Math.ceil(s.month / 3) : '';
             const fobPhp = Number(r.fobValuePhp ?? r.valuePhp ?? 0);
             const fobUsd = Number(r.fobValueUsd ?? r.valueUsd ?? 0);
+            const exchangeRate = Number(r.exchangeRate ?? 0);
+            const exciseTaxRate = Number(r.exciseTaxRate ?? 0);
+            const exciseTaxPayable = Number(r.exciseTaxPayable ?? (fobPhp > 0 && exciseTaxRate > 0 ? fobPhp * exciseTaxRate : 0));
             const values = [
                 s.year,
                 s.month ?? '',
@@ -263,6 +266,9 @@ reportsRouter.get('/sales', asyncHandler(async (req, res) => {
                 r.unit ?? s.commodity.defaultUnit?.name ?? '',
                 fobPhp,
                 fobUsd,
+                exchangeRate || '',
+                exciseTaxRate ? `${(exciseTaxRate * 100).toFixed(0)}%` : '',
+                exciseTaxPayable,
                 r.isExport ? 'YES' : 'NO'
             ];
             values.forEach((v, i) => {
