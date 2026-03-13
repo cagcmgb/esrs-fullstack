@@ -117,8 +117,9 @@ const Dashboard: React.FC<DashboardProps> = ({ contractors, summary, onNavigate 
     { name: 'Both', value: filteredContractors.filter((c) => getMineralTypeBucket(c) === 'Both').length }
   ].filter((d) => d.value > 0);
 
-  // Detect stockpile rising: if production significantly exceeds sales in last 3 months
-  const recentTrend = summary?.monthlyTrend?.slice(-3) ?? [];
+  // Detect stockpile rising: if production significantly exceeds sales in the last 3 reported
+  // months. Requires all 3 months to have non-zero production data (filters out gaps).
+  const recentTrend = (summary?.monthlyTrend ?? []).filter((m) => m.productionQty > 0).slice(-3);
   const isRisingStockpile = recentTrend.length === 3 &&
     recentTrend.every((m) => m.productionQty > m.salesQty * STOCKPILE_THRESHOLD_RATIO);
 

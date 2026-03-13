@@ -1,86 +1,80 @@
-import React, { useMemo, useState } from 'react';
+/**
+ * PhilippineMap – SimpleMaps-style interactive HTML5 SVG map
+ *
+ * Renders the 82 Philippine provinces (accurate coastal shapes from amcharts4-geodata)
+ * coloured by their parent region's production value heat gradient.  Province borders
+ * act as the thin "separator lines" between regions — identical to the SimpleMaps
+ * ready-to-use HTML5 embed.
+ *
+ * Interactive features (matching SimpleMaps interactive edition):
+ *   • Mouse-wheel / trackpad zoom
+ *   • Click-and-drag pan
+ *   • Pinch-to-zoom + two-finger swipe-pan on mobile/tablet
+ *   • Tap a region to filter the dashboard
+ *   • Zoom-in / zoom-out / reset buttons
+ *   • Hover tooltip with production stats
+ */
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import type { RegionalStat } from '../types';
 import { matchesPsgcRegion } from '../utils/regionMatch';
-import phRegionsData from '../public/ph-regions.json';
+import phProvincesData from '../public/ph-provinces.json';
 
 // ── Mercator projection ──────────────────────────────────────────────────────
-// SimpleMaps-style: coordinates are projected once at module initialisation,
-// then SVG path strings are stored as simple strings — no external library needed.
 
-const SVG_W = 480;
-const SVG_H = 600;
-const PAD = 8;
+const SVG_W = 500;
+const SVG_H = 640;
+const PAD = 6;
 
-// Philippines geographic bounding box
+// Philippines geographic bounding box (longitude / latitude)
 const MIN_LON = 116.85;
-const MAX_LON = 127.05;
+const MAX_LON = 127.10;
 const MIN_LAT = 4.50;
-const MAX_LAT = 21.30;
+const MAX_LAT = 21.35;
 
 function mercY(lat: number): number {
-  const rad = (lat * Math.PI) / 180;
-  return Math.log(Math.tan(Math.PI / 4 + rad / 2));
+  const r = (lat * Math.PI) / 180;
+  return Math.log(Math.tan(Math.PI / 4 + r / 2));
 }
 
 const _yMin = mercY(MIN_LAT);
 const _yMax = mercY(MAX_LAT);
-const _drawW = SVG_W - PAD * 2;
-const _drawH = SVG_H - PAD * 2;
+const _dw = SVG_W - PAD * 2;
+const _dh = SVG_H - PAD * 2;
 
-/** Convert geographic [lon, lat] to SVG [x, y]. */
 function project(lon: number, lat: number): [number, number] {
-  const x = PAD + ((lon - MIN_LON) / (MAX_LON - MIN_LON)) * _drawW;
-  const y = PAD + ((_yMax - mercY(lat)) / (_yMax - _yMin)) * _drawH;
+  const x = PAD + ((lon - MIN_LON) / (MAX_LON - MIN_LON)) * _dw;
+  const y = PAD + ((_yMax - mercY(lat)) / (_yMax - _yMin)) * _dh;
   return [x, y];
 }
 
-/** Convert one coordinate ring to an SVG path segment string. */
 function ringToD(ring: number[][]): string {
   return (
-    ring
-      .map((c, i) => {
-        const [x, y] = project(c[0], c[1]);
-        return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
-      })
-      .join(' ') + ' Z'
+    ring.map((c, i) => {
+      const [x, y] = project(c[0], c[1]);
+      return `${i === 0 ? 'M' : 'L'}${x.toFixed(2)},${y.toFixed(2)}`;
+    }).join('') + 'Z'
   );
 }
 
-/** Convert a GeoJSON Polygon or MultiPolygon geometry to a single SVG `d` string. */
 function geomToD(geom: { type: string; coordinates: any }): string {
   if (geom.type === 'Polygon') {
-    return (geom.coordinates as number[][][]).map(ringToD).join(' ');
+    return (geom.coordinates as number[][][]).map(ringToD).join('');
   }
   if (geom.type === 'MultiPolygon') {
     return (geom.coordinates as number[][][][])
       .flatMap((poly) => poly.map(ringToD))
-      .join(' ');
+      .join('');
   }
   return '';
 }
 
-// ── Heat colour: light-blue → dark-navy (SimpleMaps gradient style) ──────────
+// ── Heat colour: light-blue → dark-navy ──────────────────────────────────────
 function heatColor(value: number, maxValue: number): string {
   const t = maxValue > 0 ? Math.min(value / maxValue, 1) : 0;
   const r = Math.round(219 + (30 - 219) * t);
   const g = Math.round(234 + (58 - 234) * t);
   const b = Math.round(254 + (138 - 254) * t);
   return `rgb(${r},${g},${b})`;
-}
-
-// ── Region matching (backend uses PSGC 10-digit codes) ───────────────────────
-function matchStat(props: any, stats: RegionalStat[]): RegionalStat | undefined {
-  const { psgc, code, aliases = [] } = props;
-  return stats.find((s) => {
-    const rc = s.regionCode;
-    // 1. PSGC exact / prefix match
-    if (psgc && matchesPsgcRegion(rc, psgc)) return true;
-    // 2. Short-code match (e.g. "NCR", "CAR", "4A")
-    if (code && matchesPsgcRegion(rc, code)) return true;
-    // 3. Alias list match
-    if (aliases.some((a: string) => matchesPsgcRegion(rc, a))) return true;
-    return false;
-  });
 }
 
 function formatPHP(v: number): string {
@@ -90,7 +84,51 @@ function formatPHP(v: number): string {
   return `₱${v.toFixed(0)}`;
 }
 
-// ── Types ────────────────────────────────────────────────────────────────────
+// ── Pre-compile SVG path strings once at module load ─────────────────────────
+interface ProvinceFeature {
+  id: string;
+  provinceName: string;
+  psgc: string;            // 10-digit region PSGC
+  regionName: string;
+  regionFullName: string;
+  d: string;
+}
+
+const PROVINCE_FEATURES: ProvinceFeature[] = (phProvincesData as any).features.map((f: any) => ({
+  id: f.id as string,
+  provinceName: f.properties.name as string,
+  psgc: f.properties.psgc as string,
+  regionName: f.properties.regionName as string,
+  regionFullName: f.properties.regionFullName as string,
+  d: geomToD(f.geometry),
+}));
+
+// ── Zoom / pan constants ──────────────────────────────────────────────────────
+const MIN_SCALE = 1;
+const MAX_SCALE = 8;
+const ZOOM_STEP = 1.35;
+
+interface Transform {
+  scale: number;
+  tx: number;
+  ty: number;
+}
+
+const INITIAL_TRANSFORM: Transform = { scale: 1, tx: 0, ty: 0 };
+
+function clampTransform(t: Transform): Transform {
+  const s = Math.max(MIN_SCALE, Math.min(MAX_SCALE, t.scale));
+  // Keep the map centred when zoomed out; allow panning only when zoomed in
+  const maxTx = ((s - 1) * SVG_W) / 2;
+  const maxTy = ((s - 1) * SVG_H) / 2;
+  return {
+    scale: s,
+    tx: Math.max(-maxTx, Math.min(maxTx, t.tx)),
+    ty: Math.max(-maxTy, Math.min(maxTy, t.ty)),
+  };
+}
+
+// ── Types ─────────────────────────────────────────────────────────────────────
 export interface PhilippineMapProps {
   stats: RegionalStat[];
   selectedRegionPsgc: string | null;
@@ -101,101 +139,278 @@ interface TooltipState {
   x: number;
   y: number;
   stat: RegionalStat;
-  label: string;
+  regionLabel: string;
+  provinceName: string;
 }
 
-// Pre-process the GeoJSON features once at module load (same as SimpleMaps'
-// pre-compiled SVG approach — no runtime projection library required).
-interface MapFeature {
-  psgc: string;
-  props: any;
-  d: string;
-}
-
-const MAP_FEATURES: MapFeature[] = (phRegionsData as any).features.map((f: any) => ({
-  psgc: f.properties.psgc as string,
-  props: f.properties,
-  d: geomToD(f.geometry),
-}));
-
-// ── Component ────────────────────────────────────────────────────────────────
+// ── Component ─────────────────────────────────────────────────────────────────
 const PhilippineMap: React.FC<PhilippineMapProps> = ({ stats, selectedRegionPsgc, onRegionClick }) => {
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
   const [hoveredPsgc, setHoveredPsgc] = useState<string | null>(null);
+  const [transform, setTransform] = useState<Transform>(INITIAL_TRANSFORM);
+
+  // Drag state (ref to avoid stale closures)
+  const drag = useRef<{ startX: number; startY: number; startTx: number; startTy: number } | null>(null);
+  // Pinch state
+  const pinch = useRef<{ dist: number; scale: number; tx: number; ty: number } | null>(null);
+  // "Did we drag?" – used to suppress click after a drag
+  const didDrag = useRef(false);
 
   const maxValue = useMemo(() => Math.max(...stats.map((s) => s.productionValue), 1), [stats]);
 
+  // Build a PSGC → RegionalStat lookup for O(1) access
+  const statByPsgc = useMemo(() => {
+    const map = new Map<string, RegionalStat>();
+    for (const s of stats) {
+      // Index by exact regionCode
+      map.set(s.regionCode, s);
+    }
+    return map;
+  }, [stats]);
+
+  // Resolve RegionalStat for a province feature
+  const getStat = useCallback(
+    (pf: ProvinceFeature): RegionalStat | undefined => {
+      // Fast exact lookup first
+      const fast = statByPsgc.get(pf.psgc);
+      if (fast) return fast;
+      // Fallback: iterate with matchesPsgcRegion
+      return stats.find((s) => matchesPsgcRegion(s.regionCode, pf.psgc));
+    },
+    [statByPsgc, stats],
+  );
+
+  // ── Zoom / pan helpers ──────────────────────────────────────────────────────
+  const zoomAt = useCallback((factor: number, cx: number, cy: number) => {
+    setTransform((prev) => {
+      const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, prev.scale * factor));
+      const ratio = newScale / prev.scale;
+      // Zoom towards pointer: adjust translation so cx/cy stays fixed
+      const tx = cx - ratio * (cx - prev.tx);
+      const ty = cy - ratio * (cy - prev.ty);
+      return clampTransform({ scale: newScale, tx, ty });
+    });
+  }, []);
+
+  const onWheel = useCallback(
+    (e: React.WheelEvent<SVGSVGElement>) => {
+      e.preventDefault();
+      const rect = (e.currentTarget as SVGSVGElement).getBoundingClientRect();
+      const cx = ((e.clientX - rect.left) / rect.width) * SVG_W;
+      const cy = ((e.clientY - rect.top) / rect.height) * SVG_H;
+      const factor = e.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP;
+      zoomAt(factor, cx, cy);
+    },
+    [zoomAt],
+  );
+
+  // ── Mouse drag pan ──────────────────────────────────────────────────────────
+  const onMouseDown = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
+    if (e.button !== 0) return;
+    didDrag.current = false;
+    drag.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      startTx: 0,
+      startTy: 0,
+    };
+    // Capture current transform
+    setTransform((prev) => {
+      if (drag.current) {
+        drag.current.startTx = prev.tx;
+        drag.current.startTy = prev.ty;
+      }
+      return prev;
+    });
+  }, []);
+
+  const onMouseMove = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
+    if (!drag.current) return;
+    const dx = e.clientX - drag.current.startX;
+    const dy = e.clientY - drag.current.startY;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) didDrag.current = true;
+    setTransform((prev) =>
+      clampTransform({ scale: prev.scale, tx: drag.current!.startTx + dx, ty: drag.current!.startTy + dy }),
+    );
+    // Hide tooltip while panning
+    setTooltip(null);
+  }, []);
+
+  const onMouseUp = useCallback(() => {
+    drag.current = null;
+  }, []);
+
+  // ── Touch events ────────────────────────────────────────────────────────────
+  function getTouchDist(t: React.TouchList): number {
+    if (t.length < 2) return 0;
+    return Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+  }
+
+  const onTouchStart = useCallback((e: React.TouchEvent<SVGSVGElement>) => {
+    if (e.touches.length === 1) {
+      didDrag.current = false;
+      drag.current = { startX: e.touches[0].clientX, startY: e.touches[0].clientY, startTx: 0, startTy: 0 };
+      setTransform((prev) => {
+        if (drag.current) {
+          drag.current.startTx = prev.tx;
+          drag.current.startTy = prev.ty;
+        }
+        return prev;
+      });
+    } else if (e.touches.length === 2) {
+      drag.current = null;
+      setTransform((prev) => {
+        pinch.current = { dist: getTouchDist(e.touches), scale: prev.scale, tx: prev.tx, ty: prev.ty };
+        return prev;
+      });
+    }
+  }, []);
+
+  const onTouchMove = useCallback((e: React.TouchEvent<SVGSVGElement>) => {
+    e.preventDefault();
+    if (e.touches.length === 1 && drag.current) {
+      const dx = e.touches[0].clientX - drag.current.startX;
+      const dy = e.touches[0].clientY - drag.current.startY;
+      if (Math.abs(dx) > 4 || Math.abs(dy) > 4) didDrag.current = true;
+      setTransform((prev) =>
+        clampTransform({ scale: prev.scale, tx: drag.current!.startTx + dx, ty: drag.current!.startTy + dy }),
+      );
+      setTooltip(null);
+    } else if (e.touches.length === 2 && pinch.current) {
+      const newDist = getTouchDist(e.touches);
+      const factor = newDist / pinch.current.dist;
+      const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, pinch.current.scale * factor));
+      const ratio = newScale / pinch.current.scale;
+      setTransform(clampTransform({
+        scale: newScale,
+        tx: cx - ratio * (cx - pinch.current.tx),
+        ty: cy - ratio * (cy - pinch.current.ty),
+      }));
+    }
+  }, []);
+
+  const onTouchEnd = useCallback(() => {
+    drag.current = null;
+    pinch.current = null;
+  }, []);
+
+  // ── SVG transform string ────────────────────────────────────────────────────
+  const svgTransform = `translate(${transform.tx.toFixed(1)},${transform.ty.toFixed(1)}) scale(${transform.scale.toFixed(4)})`;
+  const strokeWidth = Math.max(0.15, 0.6 / transform.scale);   // thin borders even when zoomed in
+
   return (
     <div className="relative w-full select-none">
-      {/* ── Inline SVG map (SimpleMaps HTML5 style) ───────────────────────── */}
+      {/* ── Zoom controls (SimpleMaps style) ─────────────────────────────── */}
+      <div className="absolute top-2 right-2 z-10 flex flex-col gap-1">
+        <button
+          aria-label="Zoom in"
+          className="w-7 h-7 bg-white border border-slate-200 rounded shadow-sm text-slate-600 hover:bg-slate-50 flex items-center justify-center text-base font-bold leading-none"
+          onClick={() => setTransform((p) => clampTransform({ scale: p.scale * ZOOM_STEP, tx: p.tx, ty: p.ty }))}
+        >+</button>
+        <button
+          aria-label="Zoom out"
+          className="w-7 h-7 bg-white border border-slate-200 rounded shadow-sm text-slate-600 hover:bg-slate-50 flex items-center justify-center text-base font-bold leading-none"
+          onClick={() => setTransform((p) => clampTransform({ scale: p.scale / ZOOM_STEP, tx: p.tx, ty: p.ty }))}
+        >−</button>
+        <button
+          aria-label="Reset zoom"
+          className="w-7 h-7 bg-white border border-slate-200 rounded shadow-sm text-slate-500 hover:bg-slate-50 flex items-center justify-center text-xs font-semibold"
+          onClick={() => setTransform(INITIAL_TRANSFORM)}
+          title="Reset"
+        >⌂</button>
+      </div>
+
+      {/* ── SVG map ──────────────────────────────────────────────────────── */}
       <svg
         viewBox={`0 0 ${SVG_W} ${SVG_H}`}
-        className="w-full h-auto"
+        className="w-full h-auto touch-none"
         aria-label="Philippine Regions Interactive Map"
+        style={{ cursor: drag.current ? 'grabbing' : 'grab', display: 'block' }}
+        onWheel={onWheel}
+        onMouseDown={onMouseDown}
+        onMouseMove={onMouseMove}
+        onMouseUp={onMouseUp}
+        onMouseLeave={onMouseUp}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
       >
         <defs>
-          <filter id="rsm-shadow" x="-15%" y="-15%" width="130%" height="130%">
-            <feDropShadow dx="0" dy="1.5" stdDeviation="1.5" floodOpacity="0.18" />
+          <filter id="ph-glow" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="0" stdDeviation="2" floodColor="#f59e0b" floodOpacity="0.55" />
           </filter>
         </defs>
 
-        {MAP_FEATURES.map((f) => {
-          const stat = matchStat(f.props, stats);
-          const isSelected = selectedRegionPsgc === f.psgc;
-          const isHovered = hoveredPsgc === f.psgc;
-          const isOtherActive = selectedRegionPsgc !== null && !isSelected;
+        {/* Sea background */}
+        <rect width={SVG_W} height={SVG_H} fill="#e8f4fd" />
 
-          let fill: string;
-          if (isSelected) {
-            fill = '#f59e0b'; // amber — selected region
-          } else if (stat) {
-            fill = heatColor(stat.productionValue, maxValue);
-          } else {
-            fill = '#e2e8f0'; // no-data grey
-          }
+        <g transform={svgTransform}>
+          {PROVINCE_FEATURES.map((pf) => {
+            const stat = getStat(pf);
+            const isRegionSelected = selectedRegionPsgc !== null && matchesPsgcRegion(selectedRegionPsgc, pf.psgc);
+            const isOtherActive = selectedRegionPsgc !== null && !isRegionSelected;
+            const isHovered = hoveredPsgc === pf.psgc;
 
-          return (
-            <path
-              key={f.psgc}
-              d={f.d}
-              fill={fill}
-              stroke="#ffffff"
-              strokeWidth={isSelected || isHovered ? 1.5 : 0.7}
-              opacity={isOtherActive ? 0.38 : 1}
-              filter={isSelected ? 'url(#rsm-shadow)' : undefined}
-              style={{
-                cursor: stat ? 'pointer' : 'default',
-                transition: 'opacity 0.18s ease, fill 0.12s ease',
-              }}
-              onMouseEnter={(e) => {
-                setHoveredPsgc(f.psgc);
-                if (stat) {
-                  setTooltip({
-                    x: e.clientX,
-                    y: e.clientY,
-                    stat,
-                    label: f.props.fullName || f.props.name,
-                  });
-                }
-              }}
-              onMouseMove={(e) => {
-                if (tooltip) setTooltip((prev) => (prev ? { ...prev, x: e.clientX, y: e.clientY } : null));
-              }}
-              onMouseLeave={() => {
-                setHoveredPsgc(null);
-                setTooltip(null);
-              }}
-              onClick={() => {
-                if (stat) onRegionClick(isSelected ? null : f.psgc);
-              }}
-            />
-          );
-        })}
+            let fill: string;
+            if (isRegionSelected) {
+              fill = '#f59e0b';      // amber – selected region
+            } else if (stat) {
+              fill = heatColor(stat.productionValue, maxValue);
+            } else {
+              fill = '#cbd5e1';      // no-data slate
+            }
+
+            return (
+              <path
+                key={pf.id}
+                d={pf.d}
+                fill={fill}
+                stroke="#ffffff"
+                strokeWidth={isHovered || isRegionSelected ? strokeWidth * 2.5 : strokeWidth}
+                strokeLinejoin="round"
+                opacity={isOtherActive ? 0.35 : 1}
+                filter={isRegionSelected ? 'url(#ph-glow)' : undefined}
+                style={{
+                  cursor: stat ? 'pointer' : 'default',
+                  transition: 'opacity 0.15s, fill 0.1s',
+                  paintOrder: 'stroke fill',
+                }}
+                onMouseEnter={(e) => {
+                  if (drag.current) return;
+                  setHoveredPsgc(pf.psgc);
+                  if (stat) {
+                    setTooltip({ x: e.clientX, y: e.clientY, stat, regionLabel: pf.regionFullName, provinceName: pf.provinceName });
+                  }
+                }}
+                onMouseMove={(e) => {
+                  if (tooltip && !drag.current) {
+                    setTooltip((prev) => prev ? { ...prev, x: e.clientX, y: e.clientY } : null);
+                  }
+                }}
+                onMouseLeave={() => {
+                  setHoveredPsgc(null);
+                  setTooltip(null);
+                }}
+                onClick={() => {
+                  if (didDrag.current) return;
+                  if (stat) onRegionClick(isRegionSelected ? null : pf.psgc);
+                }}
+              />
+            );
+          })}
+        </g>
       </svg>
 
+      {/* ── Zoom hint ─────────────────────────────────────────────────────── */}
+      <p className="text-xs text-slate-400 text-center mt-0.5 mb-1">
+        Scroll to zoom · Drag to pan · Tap region to filter
+      </p>
+
       {/* ── Gradient legend ────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-2 mt-1">
-        <span className="text-xs text-slate-500">No data</span>
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-slate-500">Low</span>
         <div
           className="flex-1 h-2 rounded-full"
           style={{ background: 'linear-gradient(to right, #dbeafe, #1e3a8a)' }}
@@ -203,7 +418,7 @@ const PhilippineMap: React.FC<PhilippineMapProps> = ({ stats, selectedRegionPsgc
         <span className="text-xs text-slate-500">High output</span>
       </div>
 
-      {/* ── Clear filter button ─────────────────────────────────────────────── */}
+      {/* ── Clear filter ──────────────────────────────────────────────────── */}
       {selectedRegionPsgc && (
         <button
           className="mt-2 text-xs text-blue-600 hover:text-blue-800 underline underline-offset-2"
@@ -213,13 +428,14 @@ const PhilippineMap: React.FC<PhilippineMapProps> = ({ stats, selectedRegionPsgc
         </button>
       )}
 
-      {/* ── Tooltip ────────────────────────────────────────────────────────── */}
+      {/* ── Tooltip ───────────────────────────────────────────────────────── */}
       {tooltip && (
         <div
           className="fixed z-50 bg-slate-900 text-white rounded-xl shadow-2xl p-4 w-64 text-sm pointer-events-none"
           style={{ left: tooltip.x + 14, top: tooltip.y - 90 }}
         >
-          <p className="font-bold text-base mb-2">{tooltip.label}</p>
+          <p className="font-bold text-base mb-0.5">{tooltip.regionLabel}</p>
+          <p className="text-slate-400 text-xs mb-2 italic">{tooltip.provinceName}</p>
           <div className="space-y-1 text-xs">
             <div className="flex justify-between">
               <span className="text-slate-400">Production Value</span>
@@ -242,7 +458,8 @@ const PhilippineMap: React.FC<PhilippineMapProps> = ({ stats, selectedRegionPsgc
                 <span className="text-slate-400">Verified Reports</span>
                 <span className="font-semibold text-emerald-400">
                   {`${Math.round(
-                    (tooltip.stat.verifiedCount / (tooltip.stat.verifiedCount + tooltip.stat.pendingCount)) * 100
+                    (tooltip.stat.verifiedCount /
+                      (tooltip.stat.verifiedCount + tooltip.stat.pendingCount)) * 100,
                   )}%`}
                 </span>
               </div>
